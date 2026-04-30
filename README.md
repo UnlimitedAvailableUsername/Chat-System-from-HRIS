@@ -22,8 +22,8 @@ Should take ~15 minutes.
 ### 2. Grab the code
 
 ```bash
-git clone <this-repo-url>
-cd interview-chat-test
+git clone https://github.com/UnlimitedAvailableUsername/Chat-System-from-HRIS.git
+cd Chat-System-from-HRIS
 npm install
 ```
 
