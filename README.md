@@ -31,7 +31,9 @@ npm install
 
 1. Head to https://supabase.com/dashboard and create a new project (free tier is fine, takes about a minute to provision).
 2. Once it's ready, open the **SQL Editor** in the left sidebar.
-3. Open `supabase/migration.sql` from this repo, copy the whole thing, paste it into the editor, and hit **Run**. That sets up the tables, turns on realtime, and seeds a few test users so you have something to play with.
+3. Open `supabase/migration.sql` from this repo, copy the whole thing, paste it into the editor, and hit **Run**.
+
+That single SQL file does everything: creates the tables, enables realtime, sets up the `chat-attachments` storage bucket, creates the login RPCs, and seeds the test users below. You shouldn't need to click around the Supabase dashboard for anything else.
 
 ### 4. Drop in your credentials
 
@@ -47,16 +49,25 @@ Grab your project URL and anon key from **Project Settings → API** in Supabase
 npm run dev
 ```
 
-Open http://localhost:5173. You'll see a login screen with a few test users. Try opening two browser tabs (or one regular + one incognito) — log in as the admin in one and an employee in the other window, preferrably Incognito. Send a message and watch it pop up live on the other side. Does it work? Congrats, you've set it up properly.
+Open http://localhost:5173. You'll land on a page asking *"Choose your destination"* with two cards — **Employee Login** and **Admin Login**. Both work with the seeded test users:
+
+| Portal       | Username / SSS  | Password      |
+| ------------ | --------------- | ------------- |
+| Admin Login  | `admin`         | `admin123`    |
+| Employee     | `01-1234567-8`  | `employee123` |
+| Employee     | `02-2345678-9`  | `employee123` |
+
+To see the chat in action: open two browser windows (one regular + one Incognito works best). Log in as the admin in one and as Juan or Maria in the other. Send a message and watch it pop up live on the other side. Does it work? Congrats, you've set it up properly.
 
 ---
 
 ## What's already there
 
-- Two simple portals (`/admin`, `/employee`) and a login page that just lets you pick which seeded user to be — no real auth, this is a sandbox.
-- Real-time messaging through Supabase Realtime.
-- A basic unread badge on the admin side.
-- A small, readable codebase. You can skim the whole thing in a few minutes — start with `src/pages/AdminChat.tsx` and `src/pages/EmployeeChat.tsx`.
+- A landing page (`/`) with two portal cards leading to real login forms.
+- An **Admin Portal** (`/admin/chat-inquiries`) with a sidebar shell and the full chat-inquiries page — list of conversations, message thread, employee profile drawer, mark-as-resolved, file attachments, per-admin unread tracking.
+- An **Employee Portal** (`/employee/chat`) with a header + bottom-nav shell and a clean chat view, complete with a star-rating feedback card that pops up when a conversation winds down.
+- Real-time messaging through Supabase Realtime — no polling, messages just appear.
+- A small, readable codebase. You can skim the whole thing in a few minutes — start with `src/pages/ChatInquiries.tsx` (admin) and `src/pages/EmployeeChatSupport.tsx` (employee).
 
 ---
 
@@ -101,20 +112,32 @@ Wag mo masyadong i-overthink. A few hours is plenty. Kung may rabbit hole na nak
 ```
 interview-chat-test/
 ├── supabase/
-│   └── migration.sql         # Run this once in Supabase SQL Editor
+│   └── migration.sql              # Run this once in Supabase SQL Editor
 ├── src/
+│   ├── components/
+│   │   ├── Layout.tsx             # Admin shell (sidebar + outlet)
+│   │   ├── Sidebar.tsx            # Admin sidebar
+│   │   ├── EmployeeLayout.tsx     # Employee shell (header + bottom nav)
+│   │   ├── LoginForm.tsx          # Admin login form
+│   │   ├── ChatFeedbackCard.tsx   # Star-rating feedback widget
+│   │   └── NotificationDialog.tsx # Reusable success/error dialog
 │   ├── contexts/
-│   │   └── AuthContext.tsx   # Pick-a-user "auth"
+│   │   ├── AuthContext.tsx        # Admin session
+│   │   └── EmployeeAuthContext.tsx# Employee session
+│   ├── hooks/
+│   │   ├── useChatNotifications.ts          # Admin unread count
+│   │   └── useEmployeeChatNotifications.ts  # Employee unread count
 │   ├── lib/
-│   │   └── supabase.ts       # Supabase client
+│   │   ├── supabase.ts            # Supabase client
+│   │   └── permissions.ts         # ROLE_IDS + helper stubs
 │   ├── pages/
-│   │   ├── Login.tsx         # User picker
-│   │   ├── AdminChat.tsx     # Admin conversation list + chat pane
-│   │   └── EmployeeChat.tsx  # Employee single-conversation view
-│   ├── App.tsx               # Routes
-│   ├── main.tsx              # Entry
-│   ├── types.ts              # Shared TS types
-│   └── index.css             # Tailwind entry
+│   │   ├── LandingPage.tsx        # / — portal picker
+│   │   ├── EmployeeLogin.tsx      # /employee — employee login
+│   │   ├── ChatInquiries.tsx      # /admin/chat-inquiries — admin chat dashboard
+│   │   └── EmployeeChatSupport.tsx# /employee/chat — employee chat
+│   ├── App.tsx                    # Routes
+│   ├── main.tsx                   # Entry
+│   └── index.css                  # Tailwind entry
 ├── .env.example
 ├── package.json
 └── README.md

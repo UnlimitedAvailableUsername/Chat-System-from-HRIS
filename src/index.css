@@ -4,3 +4,49 @@
 
 html, body, #root { height: 100%; }
 body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+
+@layer components {
+  /* Landing page card hover effects — copied from production */
+  .landing-card {
+    @apply transform transition duration-200;
+  }
+  .landing-card:hover {
+    transform: translateY(-6px) scale(1.03);
+    box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.08);
+  }
+  .landing-card .landing-icon {
+    @apply transition-colors duration-200;
+  }
+  .landing-card:hover .landing-icon {
+    color: #004e16;
+  }
+  .landing-card .landing-title {
+    @apply transition-colors duration-200;
+  }
+  .landing-card:hover .landing-title {
+    color: #006a22;
+  }
+  .landing-card .card-top {
+    @apply transition-colors duration-200;
+  }
+  .landing-card:hover .card-top {
+    background-image: linear-gradient(90deg,#05450f,#0a6a2a);
+  }
+
+  @media (min-width: 1024px) {
+    .landing-grid > :nth-last-child(1):nth-child(3n+1) {
+      grid-column: 2 / 3;
+      justify-self: center;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .landing-grid > :nth-last-child(1):nth-child(2n+1) {
+      grid-column: 1 / -1;
+    }
+    .landing-grid > :nth-last-child(1):nth-child(2n+1) .landing-card {
+      margin-left: auto;
+      margin-right: auto;
+    }
+  }
+}

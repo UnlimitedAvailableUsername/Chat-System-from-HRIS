@@ -1,32 +1,56 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
-import { Login } from './pages/Login'
-import { AdminChat } from './pages/AdminChat'
-import { EmployeeChat } from './pages/EmployeeChat'
+import { useEmployeeAuth } from './contexts/EmployeeAuthContext'
+import { LandingPage } from './pages/LandingPage'
+import { LoginForm } from './components/LoginForm'
+import { EmployeeLogin } from './pages/EmployeeLogin'
+import { Layout } from './components/Layout'
+import { ChatInquiries } from './pages/ChatInquiries'
+import { EmployeeChatSupport } from './pages/EmployeeChatSupport'
 
 export function App() {
-  const { user, loading } = useAuth()
+  const { user, loading: adminLoading } = useAuth()
+  const { user: employee, loading: empLoading } = useEmployeeAuth()
 
-  if (loading) {
+  if (adminLoading || empLoading) {
     return <div className="h-full flex items-center justify-center text-gray-500">Loading…</div>
   }
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={landingFor(user.role)} /> : <Login />} />
+      <Route path="/" element={<LandingPage />} />
+
       <Route
-        path="/admin/*"
-        element={user?.role === 'admin' ? <AdminChat /> : <Navigate to="/login" />}
+        path="/login"
+        element={!user ? <LoginForm /> : <Navigate to="/admin/chat-inquiries" replace />}
       />
       <Route
-        path="/employee/*"
-        element={user?.role === 'employee' ? <EmployeeChat /> : <Navigate to="/login" />}
+        path="/employee"
+        element={!employee ? <EmployeeLogin /> : <Navigate to="/employee/chat" replace />}
       />
-      <Route path="*" element={<Navigate to={user ? landingFor(user.role) : '/login'} />} />
+
+      {user ? (
+        <Route path="/admin" element={<Layout />}>
+          <Route path="chat-inquiries" element={<ChatInquiries />} />
+          <Route path="chat-inquiries/:threadId" element={<ChatInquiries />} />
+          {/* Demo build: every other admin path quietly redirects back to chat. */}
+          <Route path="*" element={<Navigate to="/admin/chat-inquiries" replace />} />
+        </Route>
+      ) : (
+        <Route path="/admin/*" element={<Navigate to="/login" replace />} />
+      )}
+
+      {employee ? (
+        <>
+          <Route path="/employee/chat" element={<EmployeeChatSupport />} />
+          {/* Demo build: any other employee path redirects to chat. */}
+          <Route path="/employee/*" element={<Navigate to="/employee/chat" replace />} />
+        </>
+      ) : (
+        <Route path="/employee/*" element={<Navigate to="/employee" replace />} />
+      )}
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
-}
-
-function landingFor(role: 'admin' | 'employee') {
-  return role === 'admin' ? '/admin' : '/employee'
 }
