@@ -27,6 +27,12 @@ cd Chat-System-from-HRIS
 npm install
 ```
 
+Then create your own branch off `main` and name it after yourself — first name is fine (e.g. `juan`, `maria`). Lahat ng changes mo, doon mo ilagay para hindi magsalpukan kapag may iba pang nag-push.
+
+```bash
+git checkout -b your-name
+```
+
 ### 3. Spin up a Supabase project
 
 1. Head to https://supabase.com/dashboard and create a new project (free tier is fine, takes about a minute to provision).
