@@ -161,9 +161,43 @@ begin
 end $$;
 
 -- 4. REALTIME ----------------------------------------------------------------
-alter publication supabase_realtime add table public.xin_employee_messages;
-alter publication supabase_realtime add table public.xin_admin_message_reads;
-alter publication supabase_realtime add table public.xin_chat_feedback;
+-- Fixed: prevents "already member of publication" error when re-running schema
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'xin_employee_messages'
+  ) then
+    alter publication supabase_realtime
+    add table public.xin_employee_messages;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'xin_admin_message_reads'
+  ) then
+    alter publication supabase_realtime
+    add table public.xin_admin_message_reads;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'xin_chat_feedback'
+  ) then
+    alter publication supabase_realtime
+    add table public.xin_chat_feedback;
+  end if;
+end $$;
 
 -- 5. STORAGE BUCKET (chat attachments) ---------------------------------------
 -- Public bucket for image/PDF/Excel uploads in the chat. Permissive policies
@@ -309,31 +343,36 @@ where e.employee_id = 'EMP002'
 and not exists (select 1 from public.xin_payroll_report_temp pr where pr.employee_id = e.user_id);
 
 
-create table if not exists xin_ai_audit (
-  id uuid primary key default gen_random_uuid(),
+create table if not exists public.xin_ai_audit (
+  audit_id bigserial primary key,
 
-  conversation_id uuid not null,
-  admin_id uuid not null,
+  employee_id bigint not null,
+  admin_user_id bigint not null,
 
   prompt text not null,
   ai_response text not null,
-
   final_message text,
+
   action text not null check (action in ('accepted', 'edited', 'rejected')),
+  confidence int not null default 0,
 
-  confidence numeric not null default 0,
-
-  created_at timestamp with time zone default now()
+  created_at timestamptz not null default now()
 );
 
-create index if not exists xin_ai_audit_conversation_id_idx
-on xin_ai_audit(conversation_id);
+create index if not exists idx_xin_ai_audit_employee_id
+on public.xin_ai_audit(employee_id);
 
-create index if not exists xin_ai_audit_admin_id_idx
-on xin_ai_audit(admin_id);
+create index if not exists idx_xin_ai_audit_admin_user_id
+on public.xin_ai_audit(admin_user_id);
+
+alter table public.xin_employee_messages
+add column if not exists ai_edited_by_admin boolean default false;
 
 alter table public.xin_employee_messages
 add column if not exists ai_generated boolean default false;
 
-alter table public.xin_employee_messages
-add column if not exists ai_edited_by_admin boolean default false;
+alter table public.xin_ai_audit enable row level security;
+
+drop policy if exists "anon_all" on public.xin_ai_audit;
+create policy "anon_all" on public.xin_ai_audit
+  for all using (true) with check (true);

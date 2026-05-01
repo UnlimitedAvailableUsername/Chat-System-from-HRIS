@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.ns", "dom"],
+    "strict": true
+  },
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "@supabase/functions-js/edge-runtime.d.ts": "https://esm.sh/@supabase/functions-js/edge-runtime.d.ts"
+  }
+}

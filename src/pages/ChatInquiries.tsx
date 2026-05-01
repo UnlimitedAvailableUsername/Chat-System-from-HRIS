@@ -1,7 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { MessageSquare, RefreshCw, Search, Send, Paperclip, X, FileText, Image as ImageIcon, CheckCheck, CheckCircle, Info, User, Briefcase, CreditCard, ExternalLink } from 'lucide-react'
+import {
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Send,
+  Paperclip,
+  X,
+  FileText,
+  Image as ImageIcon,
+  CheckCheck,
+  CheckCircle,
+  Info,
+  User,
+  Briefcase,
+  CreditCard,
+  ExternalLink,
+  Sparkles,
+  Bot,
+  ThumbsUp,
+  ThumbsDown,
+  Pencil
+} from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { NotificationDialog, NotificationType } from '../components/NotificationDialog'
 
@@ -35,6 +56,10 @@ interface Message {
   attachment_type?: string
   admin_user_id?: number
   admin_name?: string
+
+  // NEW: AI metadata
+  ai_generated?: boolean
+  ai_edited_by_admin?: boolean
 }
 
 interface EmployeeDetail {
@@ -67,14 +92,26 @@ interface EmployeeDetail {
   healthcard_exp: string
 }
 
-function InfoRow({ icon, label, value, mono }: { icon?: React.ReactNode; label: string; value?: string | null; mono?: boolean }) {
+function InfoRow({
+  icon,
+  label,
+  value,
+  mono
+}: {
+  icon?: React.ReactNode
+  label: string
+  value?: string | null
+  mono?: boolean
+}) {
   return (
     <div className="flex items-start justify-between gap-3 py-1.5">
       <div className="flex items-center gap-1.5 flex-shrink-0">
         {icon && <span className="text-gray-400">{icon}</span>}
         <span className="text-xs text-gray-500">{label}</span>
       </div>
-      <span className={`text-xs text-right text-gray-800 font-medium break-all ${mono ? 'font-mono' : ''}`}>{value || <span className="text-gray-400 font-normal">—</span>}</span>
+      <span className={`text-xs text-right text-gray-800 font-medium break-all ${mono ? 'font-mono' : ''}`}>
+        {value || <span className="text-gray-400 font-normal">—</span>}
+      </span>
     </div>
   )
 }
@@ -86,9 +123,7 @@ function InfoSection({ icon, title, children }: { icon: React.ReactNode; title: 
         <span className="text-blue-500">{icon}</span>
         <h5 className="text-[11px] font-semibold text-blue-500 uppercase tracking-wider">{title}</h5>
       </div>
-      <div className="bg-gray-50 rounded-xl px-3 py-1 divide-y divide-gray-100">
-        {children}
-      </div>
+      <div className="bg-gray-50 rounded-xl px-3 py-1 divide-y divide-gray-100">{children}</div>
     </div>
   )
 }
@@ -113,6 +148,7 @@ export function ChatInquiries() {
   const { threadId } = useParams<{ threadId: string }>()
   const navigate = useNavigate()
   const urlChatId = threadId ? decodeThreadId(threadId) : null
+
   const [employeeChats, setEmployeeChats] = useState<EmployeeChat[]>([])
   const [filteredChats, setFilteredChats] = useState<EmployeeChat[]>([])
   const [selectedChatId, setSelectedChatId] = useState<string | null>(urlChatId)
@@ -123,6 +159,7 @@ export function ChatInquiries() {
   const [sendingMessage, setSendingMessage] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -133,9 +170,33 @@ export function ChatInquiries() {
   const [infoPanelData, setInfoPanelData] = useState<EmployeeDetail | null>(null)
   const [infoPanelLoading, setInfoPanelLoading] = useState(false)
 
-  const [notification, setNotification] = useState<{ isOpen: boolean; type: NotificationType; title: string; message: string }>({
-    isOpen: false, type: 'error', title: '', message: ''
+  // ============================================================================
+  // AI Draft Reply State
+  // ============================================================================
+  const [aiDraft, setAiDraft] = useState('')
+  const [aiOriginalDraft, setAiOriginalDraft] = useState('')
+  const [aiConfidence, setAiConfidence] = useState<number | null>(null)
+  const [generatingAi, setGeneratingAi] = useState(false)
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
+
+  const [aiMeta, setAiMeta] = useState<{
+    message_count: number
+    payroll_cutoffs_loaded: number
+    topics_detected: string[]
+  } | null>(null)
+
+  const [notification, setNotification] = useState<{
+    isOpen: boolean
+    type: NotificationType
+    title: string
+    message: string
+  }>({
+    isOpen: false,
+    type: 'error',
+    title: '',
+    message: ''
   })
+
   const notify = useCallback((type: NotificationType, title: string, message: string) => {
     setNotification({ isOpen: true, type, title, message })
   }, [])
@@ -145,17 +206,15 @@ export function ChatInquiries() {
     setSelectedChatId(decoded)
   }, [threadId])
 
-  const selectedEmployee = employeeChats.find(chat => chat.chat_id === selectedChatId) || null
+  const selectedEmployee = employeeChats.find((chat) => chat.chat_id === selectedChatId) || null
 
   useEffect(() => {
     loadEmployeeChats(true)
 
     const channel = supabase
       .channel('admin-chat-list')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'xin_employee_messages' },
-        () => loadEmployeeChats(false)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'xin_employee_messages' }, () =>
+        loadEmployeeChats(false)
       )
       .subscribe()
 
@@ -205,6 +264,14 @@ export function ChatInquiries() {
     }
   }, [messages])
 
+  useEffect(() => {
+    // reset AI draft when switching conversations
+    setAiDraft('')
+    setAiOriginalDraft('')
+    setAiConfidence(null)
+    setAiPanelOpen(false)
+  }, [selectedChatId])
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -225,11 +292,9 @@ export function ChatInquiries() {
         .select('message_type, message_id')
         .eq('admin_user_id', user!.user_id)
 
-      const readEmployeeIds = new Set(
-        (adminReads || []).filter(r => r.message_type === 'employee').map(r => r.message_id)
-      )
+      const readEmployeeIds = new Set((adminReads || []).filter((r) => r.message_type === 'employee').map((r) => r.message_id))
 
-      const employeeIds = [...new Set(employeeMessagesData?.map(m => m.employee_id) || [])]
+      const employeeIds = [...new Set(employeeMessagesData?.map((m) => m.employee_id) || [])]
 
       const chats: EmployeeChat[] = []
 
@@ -241,29 +306,29 @@ export function ChatInquiries() {
 
         if (empError) throw empError
 
-        const companyIds = [...new Set(employees?.map(e => e.company_id).filter(Boolean) || [])]
+        const companyIds = [...new Set(employees?.map((e) => e.company_id).filter(Boolean) || [])]
         let companyMap = new Map<number, string>()
+
         if (companyIds.length > 0) {
-          const { data: companies } = await supabase
-            .from('xin_companies')
-            .select('company_id, name')
-            .in('company_id', companyIds)
-          companyMap = new Map(companies?.map(c => [c.company_id, c.name]) || [])
+          const { data: companies } = await supabase.from('xin_companies').select('company_id, name').in('company_id', companyIds)
+          companyMap = new Map(companies?.map((c) => [c.company_id, c.name]) || [])
         }
-        const employeeMap = new Map(employees?.map(e => [e.user_id, e]) || [])
 
-        const chatsByEmployee = new Map<number, {
-          lastMessage: string
-          lastMessageTime: string
-          unreadCount: number
-        }>()
+        const employeeMap = new Map(employees?.map((e) => [e.user_id, e]) || [])
 
-        employeeMessagesData?.forEach(msg => {
+        const chatsByEmployee = new Map<
+          number,
+          {
+            lastMessage: string
+            lastMessageTime: string
+            unreadCount: number
+          }
+        >()
+
+        employeeMessagesData?.forEach((msg) => {
           if (!chatsByEmployee.has(msg.employee_id)) {
             const unreadCount = employeeMessagesData.filter(
-              m => m.employee_id === msg.employee_id &&
-              m.sender_type === 'employee' &&
-              !readEmployeeIds.has(m.message_id)
+              (m) => m.employee_id === msg.employee_id && m.sender_type === 'employee' && !readEmployeeIds.has(m.message_id)
             ).length
 
             chatsByEmployee.set(msg.employee_id, {
@@ -307,11 +372,14 @@ export function ChatInquiries() {
       setFilteredChats(employeeChats)
       return
     }
-    const filtered = employeeChats.filter(chat =>
-      chat.employee_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      chat.employee_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      chat.last_message.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const filtered = employeeChats.filter(
+      (chat) =>
+        chat.employee_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        chat.employee_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        chat.last_message.toLowerCase().includes(searchTerm.toLowerCase())
     )
+
     setFilteredChats(filtered)
   }
 
@@ -327,7 +395,7 @@ export function ChatInquiries() {
       const data = messageData || []
 
       if (data.length > 0) {
-        const adminUserIds = [...new Set(data.filter(msg => msg.admin_user_id).map(msg => msg.admin_user_id))]
+        const adminUserIds = [...new Set(data.filter((msg) => msg.admin_user_id).map((msg) => msg.admin_user_id))]
 
         let adminMap = new Map<number, string>()
         if (adminUserIds.length > 0) {
@@ -335,10 +403,11 @@ export function ChatInquiries() {
             .from('xin_employees')
             .select('user_id, first_name, last_name')
             .in('user_id', adminUserIds)
-          adminMap = new Map(adminUsers?.map(admin => [admin.user_id, `${admin.first_name} ${admin.last_name}`]) || [])
+
+          adminMap = new Map(adminUsers?.map((admin) => [admin.user_id, `${admin.first_name} ${admin.last_name}`]) || [])
         }
 
-        const messagesWithAdminNames = data.map(msg => ({
+        const messagesWithAdminNames = data.map((msg) => ({
           ...msg,
           admin_name: msg.admin_user_id ? adminMap.get(msg.admin_user_id) : undefined
         }))
@@ -346,19 +415,16 @@ export function ChatInquiries() {
         setMessages(messagesWithAdminNames)
 
         if (user) {
-          const incomingIds = data
-            .filter(msg => msg.sender_type === 'employee')
-            .map(msg => msg.message_id)
+          const incomingIds = data.filter((msg) => msg.sender_type === 'employee').map((msg) => msg.message_id)
 
           if (incomingIds.length > 0) {
-            const readRecords = incomingIds.map(msgId => ({
+            const readRecords = incomingIds.map((msgId) => ({
               admin_user_id: user.user_id,
               message_type: 'employee',
               message_id: msgId
             }))
-            await supabase
-              .from('xin_admin_message_reads')
-              .upsert(readRecords, { onConflict: 'admin_user_id,message_type,message_id' })
+
+            await supabase.from('xin_admin_message_reads').upsert(readRecords, { onConflict: 'admin_user_id,message_type,message_id' })
           }
         }
       } else {
@@ -372,24 +438,23 @@ export function ChatInquiries() {
 
   const handleMarkAllRead = async () => {
     if (!user) return
-    try {
-      const { data: empMessages } = await supabase
-        .from('xin_employee_messages')
-        .select('message_id')
-        .eq('sender_type', 'employee')
 
-      const readRecords = (empMessages || []).map(m => ({
-        admin_user_id: user.user_id, message_type: 'employee', message_id: m.message_id
+    try {
+      const { data: empMessages } = await supabase.from('xin_employee_messages').select('message_id').eq('sender_type', 'employee')
+
+      const readRecords = (empMessages || []).map((m) => ({
+        admin_user_id: user.user_id,
+        message_type: 'employee',
+        message_id: m.message_id
       }))
 
       if (readRecords.length > 0) {
         for (let i = 0; i < readRecords.length; i += 500) {
           const batch = readRecords.slice(i, i + 500)
-          await supabase
-            .from('xin_admin_message_reads')
-            .upsert(batch, { onConflict: 'admin_user_id,message_type,message_id' })
+          await supabase.from('xin_admin_message_reads').upsert(batch, { onConflict: 'admin_user_id,message_type,message_id' })
         }
       }
+
       await loadEmployeeChats(false)
     } catch (error) {
       console.error('Error marking all as read:', error)
@@ -411,23 +476,22 @@ export function ChatInquiries() {
       setShowInfoPanel(false)
       return
     }
+
     try {
       setInfoPanelLoading(true)
       setShowInfoPanel(true)
       setInfoPanelData(null)
 
-      const { data, error } = await supabase
-        .from('xin_employees')
-        .select('*')
-        .eq('user_id', selectedEmployee.employee_id)
-        .maybeSingle()
+      const { data, error } = await supabase.from('xin_employees').select('*').eq('user_id', selectedEmployee.employee_id).maybeSingle()
 
       if (error) throw error
 
       if (data) {
         const [companyData, designationData, roleData] = await Promise.all([
           data.company_id ? supabase.from('xin_companies').select('name').eq('company_id', data.company_id).maybeSingle() : null,
-          data.designation_id ? supabase.from('xin_designations').select('designation_name').eq('designation_id', data.designation_id).maybeSingle() : null,
+          data.designation_id
+            ? supabase.from('xin_designations').select('designation_name').eq('designation_id', data.designation_id).maybeSingle()
+            : null,
           data.user_role_id ? supabase.from('xin_user_roles').select('role_name').eq('role_id', data.user_role_id).maybeSingle() : null
         ])
 
@@ -448,25 +512,153 @@ export function ChatInquiries() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
     const allowedTypes = [
-      'image/png','image/jpeg','image/jpg','image/gif','image/webp',
-      'application/pdf','application/vnd.ms-excel',
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/gif',
+      'image/webp',
+      'application/pdf',
+      'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ]
+
     if (!allowedTypes.includes(file.type)) {
       notify('warning', 'Invalid File', 'Please select an image (PNG, JPG, GIF, WEBP), PDF, or Excel file')
       return
     }
+
     if (file.size > 10 * 1024 * 1024) {
       notify('warning', 'File Too Large', 'File size must be less than 10MB')
       return
     }
+
     setSelectedFile(file)
   }
 
   const handleRemoveFile = () => {
     setSelectedFile(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+
+
+  const handleGenerateAiDraft = async () => {
+    if (!selectedEmployee || !user) return
+
+    try {
+      setGeneratingAi(true)
+      setAiPanelOpen(true)
+
+      const { data, error } = await supabase.functions.invoke("generate-ai-draft", {
+        body: { employee_id: selectedEmployee.employee_id }
+      })
+
+      if (error) {
+        // Log the full error context
+        console.error("Function error details:", {
+          message: error.message,
+          context: (error as any).context,
+        })
+        // Try to read the response body for the actual error message
+        const body = await (error as any).context?.json?.()
+        console.error("Function error body:", body)
+        throw new Error(body?.error || error.message)
+      }
+
+      setAiDraft(data.draft)
+      setAiOriginalDraft(data.draft)
+      setAiConfidence(data.confidence)
+    } catch (err: any) {
+      console.error("AI generation error:", err)
+      notify("error", "AI Draft Failed", err.message || "Failed to generate AI draft.")
+    } finally {
+      setGeneratingAi(false)
+    }
+  }
+
+  const handleRejectAiDraft = async () => {
+    if (!selectedEmployee || !user) return
+    if (!aiDraft || !aiOriginalDraft || aiConfidence === null) return
+
+    try {
+      const { error } = await supabase.from('xin_ai_audit').insert({
+        employee_id: selectedEmployee.employee_id,   // was: conversation_id: selectedEmployee.chat_id
+        admin_user_id: user.user_id,                  // was: admin_id: user.user_id
+        prompt: '(generated server-side)',
+        ai_response: aiOriginalDraft,
+        final_message: null,
+        action: 'rejected',
+        confidence: aiConfidence
+      })
+
+      if (error) throw error
+
+      setAiDraft('')
+      setAiOriginalDraft('')
+      setAiConfidence(null)
+      setAiPanelOpen(false)
+
+      notify('success', 'Draft Rejected', 'AI draft suggestion has been rejected.')
+    } catch (err: any) {
+      console.error('Reject AI error:', err)
+      notify('error', 'Reject Failed', err.message || 'Failed to reject AI draft.')
+    }
+  }
+
+  const handleAcceptOrEditAndSendAiDraft = async () => {
+    if (!selectedEmployee || !user) return
+    if (!aiDraft.trim() || !aiOriginalDraft || aiConfidence === null) return
+
+    const wasEdited = aiDraft.trim() !== aiOriginalDraft.trim()
+
+    try {
+      setSendingMessage(true)
+
+      // Insert message
+      const { error: msgError } = await supabase.from('xin_employee_messages').insert({
+        employee_id: selectedEmployee.employee_id,
+        message: aiDraft.trim(),
+        sender_type: 'admin',
+        is_read: false,
+        admin_user_id: user.user_id,
+        attachment_url: null,
+        attachment_name: null,
+        attachment_type: null,
+        ai_generated: true,
+        ai_edited_by_admin: wasEdited
+      })
+
+      if (msgError) throw msgError
+
+      // Audit log — prompt is built server-side in the edge function
+      const { error: auditError } = await supabase.from('xin_ai_audit').insert({
+        employee_id: selectedEmployee.employee_id,
+        admin_user_id: user.user_id,
+        prompt: '(generated server-side)',
+        ai_response: aiOriginalDraft,
+        final_message: aiDraft.trim(),
+        action: wasEdited ? 'edited' : 'accepted',
+        confidence: aiConfidence
+      })
+
+      if (auditError) throw auditError
+
+      setAiDraft('')
+      setAiOriginalDraft('')
+      setAiConfidence(null)
+      setAiPanelOpen(false)
+
+      shouldScrollRef.current = true
+      await loadMessages(selectedEmployee)
+      await loadEmployeeChats(false)
+    } catch (err: any) {
+      console.error('Send AI draft error:', err)
+      notify('error', 'Send Failed', err.message || 'Failed to send AI response.')
+    } finally {
+      setSendingMessage(false)
+    }
   }
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -484,33 +676,40 @@ export function ChatInquiries() {
       if (selectedFile) {
         const timestamp = Date.now()
         const filePath = `admin/${selectedEmployee.employee_id}/${timestamp}/${selectedFile.name}`
-        const { error: uploadError } = await supabase.storage
-          .from('chat-attachments').upload(filePath, selectedFile)
+
+        const { error: uploadError } = await supabase.storage.from('chat-attachments').upload(filePath, selectedFile)
         if (uploadError) throw uploadError
-        const { data: { publicUrl } } = supabase.storage.from('chat-attachments').getPublicUrl(filePath)
+
+        const {
+          data: { publicUrl }
+        } = supabase.storage.from('chat-attachments').getPublicUrl(filePath)
+
         attachmentUrl = publicUrl
         attachmentName = selectedFile.name
         attachmentType = selectedFile.type
       }
 
-      const { error } = await supabase
-        .from('xin_employee_messages')
-        .insert({
-          employee_id: selectedEmployee.employee_id,
-          message: newMessage.trim() || '(Attachment)',
-          sender_type: 'admin',
-          is_read: false,
-          admin_user_id: user.user_id,
-          attachment_url: attachmentUrl,
-          attachment_name: attachmentName,
-          attachment_type: attachmentType
-        })
+      const { error } = await supabase.from('xin_employee_messages').insert({
+        employee_id: selectedEmployee.employee_id,
+        message: newMessage.trim() || '(Attachment)',
+        sender_type: 'admin',
+        is_read: false,
+        admin_user_id: user.user_id,
+        attachment_url: attachmentUrl,
+        attachment_name: attachmentName,
+        attachment_type: attachmentType,
+
+        ai_generated: false,
+        ai_edited_by_admin: false
+      })
+
       if (error) throw error
 
       setNewMessage('')
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       shouldScrollRef.current = true
+
       await loadMessages(selectedEmployee)
       await loadEmployeeChats(false)
     } catch (error: any) {
@@ -524,28 +723,28 @@ export function ChatInquiries() {
 
   const isConversationResolved = () => {
     if (messages.length === 0) return false
-    const lastResolvedIdx = messages.findLastIndex(m => m.sender_type === 'system')
+    const lastResolvedIdx = messages.findLastIndex((m) => m.sender_type === 'system')
     if (lastResolvedIdx === -1) return false
-    const hasNewMessageAfter = messages.slice(lastResolvedIdx + 1).some(m => m.sender_type === 'employee')
+    const hasNewMessageAfter = messages.slice(lastResolvedIdx + 1).some((m) => m.sender_type === 'employee')
     return !hasNewMessageAfter
   }
 
   const handleResolve = async () => {
     if (!selectedEmployee || !user || resolving) return
+
     try {
       setResolving(true)
-      const adminName = user.first_name && user.last_name
-        ? `${user.first_name} ${user.last_name}`
-        : user.username || 'Admin'
-      const { error } = await supabase
-        .from('xin_employee_messages')
-        .insert({
-          employee_id: selectedEmployee.employee_id,
-          message: `Your concern has been marked as resolved by ${adminName}`,
-          sender_type: 'system',
-          is_read: false,
-          admin_user_id: user.user_id
-        })
+
+      const adminName = user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.username || 'Admin'
+
+      const { error } = await supabase.from('xin_employee_messages').insert({
+        employee_id: selectedEmployee.employee_id,
+        message: `Your concern has been marked as resolved by ${adminName}`,
+        sender_type: 'system',
+        is_read: false,
+        admin_user_id: user.user_id
+      })
+
       if (error) throw error
       shouldScrollRef.current = true
       await loadMessages(selectedEmployee)
@@ -569,7 +768,11 @@ export function ChatInquiries() {
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     })
   }
 
@@ -578,7 +781,14 @@ export function ChatInquiries() {
     if (type.startsWith('image/')) return <ImageIcon className="w-4 h-4" />
     return <FileText className="w-4 h-4" />
   }
+
   const isImageFile = (type?: string) => type?.startsWith('image/')
+
+  const getConfidenceLabel = (confidence: number) => {
+    if (confidence >= 85) return { label: 'High', cls: 'bg-green-100 text-green-700' }
+    if (confidence >= 70) return { label: 'Medium', cls: 'bg-yellow-100 text-yellow-700' }
+    return { label: 'Low', cls: 'bg-red-100 text-red-700' }
+  }
 
   return (
     <div className="flex h-[calc(100vh-6rem)] lg:h-[calc(100vh-4rem)] bg-gray-100">
@@ -642,9 +852,7 @@ export function ChatInquiries() {
                 key={chat.chat_id}
                 onClick={() => handleSelectEmployee(chat)}
                 className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
-                  selectedEmployee?.chat_id === chat.chat_id
-                    ? 'bg-blue-50 border-l-4 border-l-blue-500'
-                    : 'hover:bg-gray-50'
+                  selectedEmployee?.chat_id === chat.chat_id ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -653,21 +861,15 @@ export function ChatInquiries() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-semibold text-sm text-gray-900 truncate">
-                        {chat.employee_name}
-                      </h3>
+                      <h3 className="font-semibold text-sm text-gray-900 truncate">{chat.employee_name}</h3>
                       {chat.unread_count > 0 && (
                         <span className="px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full ml-2 flex-shrink-0">
                           {chat.unread_count}
                         </span>
                       )}
                     </div>
-                    {chat.employee_email && (
-                      <p className="text-xs text-gray-500 truncate mb-1">{chat.employee_email}</p>
-                    )}
-                    {chat.employee_company && (
-                      <p className="text-xs text-gray-500 truncate mb-1">{chat.employee_company}</p>
-                    )}
+                    {chat.employee_email && <p className="text-xs text-gray-500 truncate mb-1">{chat.employee_email}</p>}
+                    {chat.employee_company && <p className="text-xs text-gray-500 truncate mb-1">{chat.employee_company}</p>}
                     <p className="text-xs text-gray-600 truncate">{chat.last_message}</p>
                     <p className="text-xs text-gray-400 mt-1">{formatDate(chat.last_message_time)}</p>
                   </div>
@@ -690,39 +892,144 @@ export function ChatInquiries() {
                       <button
                         onClick={loadInfoPanel}
                         className={`p-1.5 rounded-full transition-colors ${
-                          showInfoPanel
-                            ? 'bg-blue-100 text-blue-600'
-                            : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'
+                          showInfoPanel ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-blue-600 hover:bg-blue-50'
                         }`}
                         title="View details"
                       >
                         <Info className="w-5 h-5" />
                       </button>
                     </div>
-                    {selectedEmployee.employee_company && (
-                      <p className="text-sm font-semibold text-blue-600 mb-0.5">{selectedEmployee.employee_company}</p>
-                    )}
-                    {selectedEmployee.employee_contact && (
-                      <p className="text-sm text-gray-600 mb-0.5">{selectedEmployee.employee_contact}</p>
-                    )}
-                    {selectedEmployee.employee_email && (
-                      <p className="text-sm text-gray-500">{selectedEmployee.employee_email}</p>
-                    )}
+                    {selectedEmployee.employee_company && <p className="text-sm font-semibold text-blue-600 mb-0.5">{selectedEmployee.employee_company}</p>}
+                    {selectedEmployee.employee_contact && <p className="text-sm text-gray-600 mb-0.5">{selectedEmployee.employee_contact}</p>}
+                    {selectedEmployee.employee_email && <p className="text-sm text-gray-500">{selectedEmployee.employee_email}</p>}
                   </div>
                 </div>
-                <button
-                  onClick={handleResolve}
-                  disabled={resolving || isConversationResolved()}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isConversationResolved()
-                      ? 'bg-green-100 text-green-700 cursor-default'
-                      : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                  } disabled:opacity-70`}
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  {resolving ? 'Resolving...' : isConversationResolved() ? 'Resolved ✓' : 'Resolve'}
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleGenerateAiDraft}
+                    disabled={generatingAi}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-70"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {generatingAi ? 'Generating...' : 'AI Draft'}
+                  </button>
+
+                  <button
+                    onClick={handleResolve}
+                    disabled={resolving || isConversationResolved()}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isConversationResolved()
+                        ? 'bg-green-100 text-green-700 cursor-default'
+                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    } disabled:opacity-70`}
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    {resolving ? 'Resolving...' : isConversationResolved() ? 'Resolved ✓' : 'Resolve'}
+                  </button>
+                </div>
               </div>
+
+              {/* AI Draft Panel */}
+              {aiPanelOpen && (
+                <div className="mt-4 border border-purple-200 bg-purple-50 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-lg bg-purple-200 flex items-center justify-center text-purple-800">
+                        <Bot className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-purple-900">AI Suggested Reply</p>
+                        <p className="text-xs text-purple-700">Admin must approve before sending.</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setAiPanelOpen(false)}
+                      className="text-purple-500 hover:text-purple-700 transition-colors"
+                      title="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {aiConfidence !== null && (
+                    <div className="flex flex-col gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-purple-800 font-medium">Confidence:</span>
+                        <span className="text-xs font-semibold text-purple-900">{aiConfidence}%</span>
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${getConfidenceLabel(aiConfidence).cls}`}>
+                          {getConfidenceLabel(aiConfidence).label}
+                        </span>
+                      </div>
+                      {aiMeta && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] text-purple-600 font-medium">Based on:</span>
+                          <span className="text-[11px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                            Last {aiMeta.message_count} messages
+                          </span>
+                          <span className="text-[11px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                            Employee profile
+                          </span>
+                          {aiMeta.payroll_cutoffs_loaded > 0 && (
+                            <span className="text-[11px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                              {aiMeta.payroll_cutoffs_loaded} payroll cutoff{aiMeta.payroll_cutoffs_loaded > 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {aiMeta.topics_detected.map((topic) => (
+                            <span key={topic} className="text-[11px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                              {topic}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <textarea
+                    value={aiDraft}
+                    onChange={(e) => setAiDraft(e.target.value)}
+                    rows={4}
+                    className="w-full resize-none rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    placeholder="AI draft will appear here..."
+                  />
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-purple-700">
+                      {aiDraft.trim() && aiOriginalDraft.trim() && aiDraft.trim() !== aiOriginalDraft.trim() ? (
+                        <span className="inline-flex items-center gap-1 font-semibold">
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edited by admin
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 font-semibold">
+                          <Bot className="w-3.5 h-3.5" />
+                          A.I. response
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleRejectAiDraft}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors"
+                      >
+                        <ThumbsDown className="w-4 h-4" />
+                        Reject
+                      </button>
+
+                      <button
+                        onClick={handleAcceptOrEditAndSendAiDraft}
+                        disabled={!aiDraft.trim() || sendingMessage}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-70"
+                      >
+                        <ThumbsUp className="w-4 h-4" />
+                        Accept & Send
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex-1 flex overflow-hidden">
@@ -734,7 +1041,7 @@ export function ChatInquiries() {
                   </div>
                 ) : (
                   <>
-                    {messages.map((message) => (
+                    {messages.map((message) =>
                       message.sender_type === 'system' ? (
                         <div key={message.message_id} className="mb-4 flex justify-center">
                           <div className="bg-gray-200 rounded-full px-4 py-2 flex items-center gap-2">
@@ -743,55 +1050,67 @@ export function ChatInquiries() {
                           </div>
                         </div>
                       ) : (
-                      <div key={message.message_id} className="mb-4 flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold flex-shrink-0 ${
-                          message.sender_type === 'admin'
-                            ? 'bg-blue-100 text-blue-600'
-                            : 'bg-green-100 text-green-600'
-                        }`}>
-                          {message.sender_type === 'admin' ? 'A' : selectedEmployee.employee_name.charAt(0)}
-                        </div>
-                        <div className="flex-1">
-                          <div className="bg-white rounded-lg shadow-sm p-4">
-                            <h4 className="font-semibold text-sm text-gray-900 mb-1">
-                              {message.sender_type === 'admin'
-                                ? (message.admin_name || 'Admin')
-                                : selectedEmployee.employee_name}
-                            </h4>
-                            {message.attachment_url && (
-                              <div className="mb-2">
-                                {isImageFile(message.attachment_type) ? (
-                                  <a href={message.attachment_url} target="_blank" rel="noopener noreferrer">
-                                    <img
-                                      src={message.attachment_url}
-                                      alt={message.attachment_name}
-                                      className="max-w-full rounded-lg max-h-64 object-cover"
-                                    />
-                                  </a>
-                                ) : (
-                                  <a
-                                    href={message.attachment_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 p-2 bg-gray-100 hover:bg-gray-200 rounded"
+                        <div key={message.message_id} className="mb-4 flex items-start gap-3">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold flex-shrink-0 ${
+                              message.sender_type === 'admin' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+                            }`}
+                          >
+                            {message.sender_type === 'admin' ? 'A' : selectedEmployee.employee_name.charAt(0)}
+                          </div>
+
+                          <div className="flex-1">
+                            <div className="bg-white rounded-lg shadow-sm p-4">
+                              <div className="flex items-center justify-between mb-1">
+                                <h4 className="font-semibold text-sm text-gray-900">
+                                  {message.sender_type === 'admin' ? message.admin_name || 'Admin' : selectedEmployee.employee_name}
+                                </h4>
+
+                                {/* AI Tags */}
+                                {message.sender_type === 'admin' && message.ai_generated && (
+                                  <span
+                                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                      message.ai_edited_by_admin ? 'bg-yellow-100 text-yellow-700' : 'bg-purple-100 text-purple-700'
+                                    }`}
                                   >
-                                    {getFileIcon(message.attachment_type)}
-                                    <span className="text-xs truncate">{message.attachment_name}</span>
-                                  </a>
+                                    {message.ai_edited_by_admin ? 'Edited by admin' : 'A.I. response'}
+                                  </span>
                                 )}
                               </div>
-                            )}
-                            {message.message !== '(Attachment)' && (
-                              <p className="text-sm text-gray-800">{message.message}</p>
-                            )}
+
+                              {message.attachment_url && (
+                                <div className="mb-2">
+                                  {isImageFile(message.attachment_type) ? (
+                                    <a href={message.attachment_url} target="_blank" rel="noopener noreferrer">
+                                      <img
+                                        src={message.attachment_url}
+                                        alt={message.attachment_name}
+                                        className="max-w-full rounded-lg max-h-64 object-cover"
+                                      />
+                                    </a>
+                                  ) : (
+                                    <a
+                                      href={message.attachment_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-2 p-2 bg-gray-100 hover:bg-gray-200 rounded"
+                                    >
+                                      {getFileIcon(message.attachment_type)}
+                                      <span className="text-xs truncate">{message.attachment_name}</span>
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+
+                              {message.message !== '(Attachment)' && <p className="text-sm text-gray-800">{message.message}</p>}
+                            </div>
+
+                            <p className="text-xs text-gray-500 mt-1 ml-4">{formatTime(message.created_at)}</p>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1 ml-4">
-                            {formatTime(message.created_at)}
-                          </p>
                         </div>
-                      </div>
                       )
-                    ))}
+                    )}
+
                     <div ref={messagesEndRef} />
                   </>
                 )}
@@ -826,21 +1145,25 @@ export function ChatInquiries() {
                     <div className="p-4 space-y-4">
                       <div className="p-4 text-center">
                         <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center text-white font-bold text-lg mx-auto mb-2.5 shadow-sm">
-                          {infoPanelData.first_name.charAt(0)}{infoPanelData.last_name.charAt(0)}
+                          {infoPanelData.first_name.charAt(0)}
+                          {infoPanelData.last_name.charAt(0)}
                         </div>
                         <h4 className="font-bold text-gray-900 text-sm leading-snug">
-                          {infoPanelData.first_name} {infoPanelData.middle_name ? infoPanelData.middle_name + ' ' : ''}{infoPanelData.last_name}
+                          {infoPanelData.first_name} {infoPanelData.middle_name ? infoPanelData.middle_name + ' ' : ''}
+                          {infoPanelData.last_name}
                         </h4>
                         <p className="text-xs text-blue-600 font-medium mt-0.5">{infoPanelData.designation_name || '—'}</p>
                         <div className="mt-2.5 flex items-center justify-center gap-1.5 flex-wrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
-                            infoPanelData.is_active === 1
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-                              infoPanelData.is_active === 1 ? 'bg-green-500' : 'bg-gray-400'
-                            }`}></span>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                              infoPanelData.is_active === 1 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                                infoPanelData.is_active === 1 ? 'bg-green-500' : 'bg-gray-400'
+                              }`}
+                            ></span>
                             {infoPanelData.is_active === 1 ? 'Active' : 'Inactive'}
                           </span>
                         </div>
@@ -891,23 +1214,15 @@ export function ChatInquiries() {
                 <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 rounded-lg">
                   {getFileIcon(selectedFile.type)}
                   <span className="text-sm text-gray-700 flex-1 truncate">{selectedFile.name}</span>
-                  <button
-                    type="button"
-                    onClick={handleRemoveFile}
-                    className="text-gray-500 hover:text-red-500 transition-colors"
-                  >
+                  <button type="button" onClick={handleRemoveFile} className="text-gray-500 hover:text-red-500 transition-colors">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               )}
+
               <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  onChange={handleFileSelect}
-                  accept="image/*,.pdf,.xls,.xlsx"
-                  className="hidden"
-                />
+                <input ref={fileInputRef} type="file" onChange={handleFileSelect} accept="image/*,.pdf,.xls,.xlsx" className="hidden" />
+
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -916,6 +1231,7 @@ export function ChatInquiries() {
                 >
                   <Paperclip className="w-5 h-5" />
                 </button>
+
                 <input
                   type="text"
                   value={newMessage}
@@ -924,6 +1240,7 @@ export function ChatInquiries() {
                   className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={sendingMessage || uploading}
                 />
+
                 <button
                   type="submit"
                   disabled={(!newMessage.trim() && !selectedFile) || sendingMessage || uploading}
@@ -947,7 +1264,7 @@ export function ChatInquiries() {
 
       <NotificationDialog
         isOpen={notification.isOpen}
-        onClose={() => setNotification(prev => ({ ...prev, isOpen: false }))}
+        onClose={() => setNotification((prev) => ({ ...prev, isOpen: false }))}
         type={notification.type}
         title={notification.title}
         message={notification.message}
