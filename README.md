@@ -79,19 +79,38 @@ To see the chat in action: open two browser windows (one regular + one Incognito
 
 ## The fun bit: add AI to the chat
 
-Pick any AI provider. The general direction is: bring an AI assistant into the conversation in a way that feels natural and useful. Beyond that, bahala ka na — surprise us, or keep it simple, your call.
+Pick any AI provider — OpenAI, Claude, Gemini, kahit ano. The general direction is: bring an AI assistant into the conversation in a way that's actually useful for an admin handling employee inquiries.
 
-Some ideas in case you want a starting point (optional lang, mix and match or ignore):
+### How we think about AI
 
-- The AI chimes in when the admin is slow to reply
-- Make AI messages look distinct from human ones
-- Let the AI use the conversation history so it feels like it's actually following along
-- The admin can take over, and the AI gets out of the way
-- Hook it up to a little knowledge base or company FAQ
-- An "AI is typing…" indicator
-- Stream the response token by token
+A quick word before you build. We've been burned by "AI just does it" patterns in the past, so we have a few rules we follow when wiring AI into our product. These aren't optional — but they don't have to all be perfectly built in a few hours. Pick a couple to actually ship and address the rest in your writeup.
 
-Walang checklist to tick — just take it in whatever direction feels good.
+1. **A human stays accountable.** AI suggests, a human approves. Don't auto-send AI replies to employees without a human reviewer in the loop.
+
+2. **Cite what you used.** When AI generates a reply, show what it drew from — the conversation history, the employee's profile, an FAQ snippet. "Based on the last 5 messages..." beats a black-box answer.
+
+3. **Log everything.** Save the prompt sent, the AI response, what the human did with it (accepted / edited / rejected), and the final outcome. A simple `xin_ai_audit` table is enough.
+
+4. **Capture corrections.** When the admin edits the AI's draft before sending, save the before/after. That diff is our cheapest training signal.
+
+5. **Scope the AI's view.** AI sees only what it needs for the current task — this conversation, this employee. Not the whole database.
+
+6. **Show confidence.** A "✨ 78% confident" tag next to a suggestion is better than a confidently wrong reply. Even a soft "not sure about this one" helps admins trust the system over time.
+
+7. **Measure it.** Track at least a basic counter: AI suggestions made, accepted as-is, edited, rejected. We need these numbers to know if AI is actually helping.
+
+### What this means for your build
+
+Realistically, in a few hours you can probably ship 2 or 3 of these well. Some ideas that fit naturally in chat:
+
+- AI generates a **draft reply** that the admin reviews + sends (not auto-sent)
+- The draft shows a small "based on..." line below it citing what it drew from
+- A "✏️ edited by admin" tag when the human changes the AI text before sending
+- A new table that logs prompt / response / human action / timestamp
+- A confidence percentage or "low / medium / high" tag next to each suggestion
+- A small dashboard showing how often suggestions were accepted vs. edited vs. rejected
+
+Pick what feels right and explain your choices in your writeup. Kung sa tingin mo mali yung isang rule for this product, push back — we'd rather hear good judgment than blind compliance.
 
 ### One quick note on API keys
 
