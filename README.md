@@ -93,11 +93,9 @@ A quick word before you build. We've been burned by "AI just does it" patterns i
 
 4. **Capture corrections.** When the admin edits the AI's draft before sending, save the before/after. That diff is our cheapest training signal.
 
-5. **Scope the AI's view.** AI sees only what it needs for the current task — this conversation, this employee. Not the whole database.
+5. **Show confidence.** A "✨ 78% confident" tag next to a suggestion is better than a confidently wrong reply. Even a soft "not sure about this one" helps admins trust the system over time.
 
-6. **Show confidence.** A "✨ 78% confident" tag next to a suggestion is better than a confidently wrong reply. Even a soft "not sure about this one" helps admins trust the system over time.
-
-7. **Measure it.** Track at least a basic counter: AI suggestions made, accepted as-is, edited, rejected. We need these numbers to know if AI is actually helping.
+6. **Measure it.** Track at least a basic counter: AI suggestions made, accepted as-is, edited, rejected. We need these numbers to know if AI is actually helping.
 
 ### What this means for your build
 
@@ -110,7 +108,7 @@ Realistically, in a few hours you can probably ship 2 or 3 of these well. Some i
 - A confidence percentage or "low / medium / high" tag next to each suggestion
 - A small dashboard showing how often suggestions were accepted vs. edited vs. rejected
 
-Pick what feels right and explain your choices in your writeup. Kung sa tingin mo mali yung isang rule for this product, push back — we'd rather hear good judgment than blind compliance.
+Pick what feels right and explain your choices in your writeup. Kung sa tingin mo mali yung isang rule, raise lang kayo ng attention for it later sa next interview niyo.
 
 ### One quick note on API keys
 
