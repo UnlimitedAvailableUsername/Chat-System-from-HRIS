@@ -307,3 +307,33 @@ from public.xin_employees e,
 ) as p(cutoff_date_start, cutoff_date_end, regular_pay, overtime_pay, holiday_pay, gross_pay, sss, philhealth, pagibig, tax, total_deduction, net_pay)
 where e.employee_id = 'EMP002'
 and not exists (select 1 from public.xin_payroll_report_temp pr where pr.employee_id = e.user_id);
+
+
+create table if not exists xin_ai_audit (
+  id uuid primary key default gen_random_uuid(),
+
+  conversation_id uuid not null,
+  admin_id uuid not null,
+
+  prompt text not null,
+  ai_response text not null,
+
+  final_message text,
+  action text not null check (action in ('accepted', 'edited', 'rejected')),
+
+  confidence numeric not null default 0,
+
+  created_at timestamp with time zone default now()
+);
+
+create index if not exists xin_ai_audit_conversation_id_idx
+on xin_ai_audit(conversation_id);
+
+create index if not exists xin_ai_audit_admin_id_idx
+on xin_ai_audit(admin_id);
+
+alter table public.xin_employee_messages
+add column if not exists ai_generated boolean default false;
+
+alter table public.xin_employee_messages
+add column if not exists ai_edited_by_admin boolean default false;
