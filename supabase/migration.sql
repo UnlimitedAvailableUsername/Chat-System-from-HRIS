@@ -117,6 +117,31 @@ create table if not exists public.xin_chat_feedback (
   created_at     timestamptz not null default now()
 );
 
+-- Payroll/payslip table — production has ~130 columns; we keep just the ones
+-- the employee-facing payslip page actually displays.
+create table if not exists public.xin_payroll_report_temp (
+  payroll_report_id     bigserial primary key,
+  employee_id           bigint not null,
+  sss_no                text,
+  first_name            text,
+  last_name             text,
+  cutoff_date_start     text,
+  cutoff_date_end       text,
+  regular_pay           text,
+  overtime_pay          text,
+  holiday_pay           text,
+  gross_pay             text,
+  sss_contribution      text,
+  philhealth_contribution text,
+  pagibig_contribution  text,
+  tax                   text,
+  total_deduction       text,
+  net_pay               text,
+  created_at            timestamptz not null default now()
+);
+
+create index if not exists idx_payroll_employee_id on public.xin_payroll_report_temp(employee_id);
+
 -- 3. ROW-LEVEL SECURITY ------------------------------------------------------
 -- Permissive policies on every table — the sandbox uses the anon key only.
 do $$
@@ -126,7 +151,7 @@ begin
     select unnest(array[
       'xin_user_roles','xin_companies','xin_designations','xin_employees',
       'xin_officer_companies','xin_employee_messages','xin_admin_message_reads',
-      'xin_chat_feedback'
+      'xin_chat_feedback','xin_payroll_report_temp'
     ])
   loop
     execute format('alter table public.%I enable row level security', t);
@@ -241,3 +266,44 @@ insert into public.xin_employee_messages (employee_id, message, sender_type)
 select e.user_id, 'When is the next payout date?', 'employee'
 from public.xin_employees e where e.employee_id = 'EMP002'
 and not exists (select 1 from public.xin_employee_messages m where m.employee_id = e.user_id);
+
+-- Sample payslips: 3 cutoffs each for Juan and Maria.
+-- Numbers are in PHP, stored as text to mirror the production schema.
+insert into public.xin_payroll_report_temp (
+  employee_id, sss_no, first_name, last_name,
+  cutoff_date_start, cutoff_date_end,
+  regular_pay, overtime_pay, holiday_pay, gross_pay,
+  sss_contribution, philhealth_contribution, pagibig_contribution, tax,
+  total_deduction, net_pay
+)
+select e.user_id, e.sss_no, e.first_name, e.last_name, p.cutoff_date_start, p.cutoff_date_end,
+       p.regular_pay, p.overtime_pay, p.holiday_pay, p.gross_pay,
+       p.sss, p.philhealth, p.pagibig, p.tax, p.total_deduction, p.net_pay
+from public.xin_employees e,
+(values
+  -- (start, end, regular, ot, holiday, gross, sss, philhealth, pagibig, tax, total_ded, net)
+  ('2026-04-16','2026-04-30','9100.00','750.00','0.00','9850.00','495.00','246.25','100.00','0.00','841.25','9008.75'),
+  ('2026-04-01','2026-04-15','9100.00','0.00','0.00','9100.00','495.00','227.50','100.00','0.00','822.50','8277.50'),
+  ('2026-03-16','2026-03-31','9100.00','525.00','875.00','10500.00','495.00','262.50','100.00','0.00','857.50','9642.50')
+) as p(cutoff_date_start, cutoff_date_end, regular_pay, overtime_pay, holiday_pay, gross_pay, sss, philhealth, pagibig, tax, total_deduction, net_pay)
+where e.employee_id = 'EMP001'
+and not exists (select 1 from public.xin_payroll_report_temp pr where pr.employee_id = e.user_id);
+
+insert into public.xin_payroll_report_temp (
+  employee_id, sss_no, first_name, last_name,
+  cutoff_date_start, cutoff_date_end,
+  regular_pay, overtime_pay, holiday_pay, gross_pay,
+  sss_contribution, philhealth_contribution, pagibig_contribution, tax,
+  total_deduction, net_pay
+)
+select e.user_id, e.sss_no, e.first_name, e.last_name, p.cutoff_date_start, p.cutoff_date_end,
+       p.regular_pay, p.overtime_pay, p.holiday_pay, p.gross_pay,
+       p.sss, p.philhealth, p.pagibig, p.tax, p.total_deduction, p.net_pay
+from public.xin_employees e,
+(values
+  ('2026-04-16','2026-04-30','9800.00','1200.00','0.00','11000.00','540.00','275.00','100.00','125.00','1040.00','9960.00'),
+  ('2026-04-01','2026-04-15','9800.00','400.00','0.00','10200.00','540.00','255.00','100.00','82.00','977.00','9223.00'),
+  ('2026-03-16','2026-03-31','9800.00','0.00','1400.00','11200.00','540.00','280.00','100.00','135.00','1055.00','10145.00')
+) as p(cutoff_date_start, cutoff_date_end, regular_pay, overtime_pay, holiday_pay, gross_pay, sss, philhealth, pagibig, tax, total_deduction, net_pay)
+where e.employee_id = 'EMP002'
+and not exists (select 1 from public.xin_payroll_report_temp pr where pr.employee_id = e.user_id);

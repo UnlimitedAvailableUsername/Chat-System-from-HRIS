@@ -7,6 +7,7 @@ import { EmployeeLogin } from './pages/EmployeeLogin'
 import { Layout } from './components/Layout'
 import { ChatInquiries } from './pages/ChatInquiries'
 import { EmployeeChatSupport } from './pages/EmployeeChatSupport'
+import { EmployeePayslip } from './pages/EmployeePayslip'
 
 export function App() {
   const { user, loading: adminLoading } = useAuth()
@@ -43,6 +44,7 @@ export function App() {
       {employee ? (
         <>
           <Route path="/employee/chat" element={<EmployeeChatSupport />} />
+          <Route path="/employee/payslip" element={<EmployeePayslip />} />
           {/* Demo build: any other employee path redirects to chat. */}
           <Route path="/employee/*" element={<Navigate to="/employee/chat" replace />} />
         </>
