@@ -265,11 +265,11 @@ export function ChatInquiries() {
   }, [messages])
 
   useEffect(() => {
-    // reset AI draft when switching conversations
     setAiDraft('')
     setAiOriginalDraft('')
     setAiConfidence(null)
     setAiPanelOpen(false)
+    setAiMeta(null)  // add this line
   }, [selectedChatId])
 
   const scrollToBottom = () => {
@@ -611,15 +611,27 @@ export function ChatInquiries() {
     if (!selectedEmployee || !user) return
     if (!aiDraft.trim() || !aiOriginalDraft || aiConfidence === null) return
 
-    const wasEdited = aiDraft.trim() !== aiOriginalDraft.trim()
+    // Strip the citation line before sending
+    const lines = aiDraft.split('\n')
+    const citationLine = lines[0]?.startsWith('*Based on:') ? lines[0] : null
+    const messageToSend = citationLine ? lines.slice(1).join('\n').trimStart() : aiDraft.trim()
+
+    if (!messageToSend) return
+
+    const wasEdited = messageToSend !== (
+      (() => {
+        const origLines = aiOriginalDraft.split('\n')
+        const origCitation = origLines[0]?.startsWith('*Based on:') ? origLines[0] : null
+        return origCitation ? origLines.slice(1).join('\n').trimStart() : aiOriginalDraft.trim()
+      })()
+    )
 
     try {
       setSendingMessage(true)
 
-      // Insert message
       const { error: msgError } = await supabase.from('xin_employee_messages').insert({
         employee_id: selectedEmployee.employee_id,
-        message: aiDraft.trim(),
+        message: messageToSend,
         sender_type: 'admin',
         is_read: false,
         admin_user_id: user.user_id,
@@ -632,13 +644,12 @@ export function ChatInquiries() {
 
       if (msgError) throw msgError
 
-      // Audit log — prompt is built server-side in the edge function
       const { error: auditError } = await supabase.from('xin_ai_audit').insert({
         employee_id: selectedEmployee.employee_id,
         admin_user_id: user.user_id,
         prompt: '(generated server-side)',
         ai_response: aiOriginalDraft,
-        final_message: aiDraft.trim(),
+        final_message: messageToSend,
         action: wasEdited ? 'edited' : 'accepted',
         confidence: aiConfidence
       })
@@ -648,6 +659,7 @@ export function ChatInquiries() {
       setAiDraft('')
       setAiOriginalDraft('')
       setAiConfidence(null)
+      setAiMeta(null)
       setAiPanelOpen(false)
 
       shouldScrollRef.current = true
@@ -986,13 +998,30 @@ export function ChatInquiries() {
                     </div>
                   )}
 
-                  <textarea
-                    value={aiDraft}
-                    onChange={(e) => setAiDraft(e.target.value)}
-                    rows={4}
-                    className="w-full resize-none rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
-                    placeholder="AI draft will appear here..."
-                  />
+                  {(() => {
+                    const lines = aiDraft.split('\n')
+                    const citationLine = lines[0]?.startsWith('*Based on:') ? lines[0] : null
+                    const bodyText = citationLine ? lines.slice(1).join('\n').trimStart() : aiDraft
+
+                    return (
+                      <>
+                        {citationLine && (
+                          <div className="mb-2 text-[11px] text-purple-600 italic bg-purple-100 rounded-lg px-3 py-1.5">
+                            {citationLine.replace(/\*/g, '')}
+                          </div>
+                        )}
+                        <textarea
+                          value={bodyText}
+                          onChange={(e) => setAiDraft(
+                            citationLine ? `${citationLine}\n${e.target.value}` : e.target.value
+                          )}
+                          rows={4}
+                          className="w-full resize-none rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                          placeholder="AI draft will appear here..."
+                        />
+                      </>
+                    )
+                  })()}
 
                   <div className="mt-3 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs text-purple-700">
