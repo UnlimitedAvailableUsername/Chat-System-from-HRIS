@@ -885,11 +885,23 @@ export function ChatInquiries() {
                         </div>
                         <div className="flex-1">
                           <div className="bg-white rounded-lg shadow-sm p-4">
-                            <h4 className="font-semibold text-sm text-gray-900 mb-1">
-                              {message.sender_type === 'admin'
-                                ? (message.admin_name || 'Admin')
-                                : selectedEmployee.employee_name}
-                            </h4>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-semibold text-sm text-gray-900">
+                                {message.sender_type === 'admin'
+                                  ? (message.admin_name || 'Admin')
+                                  : selectedEmployee.employee_name}
+                              </h4>
+                              {message.is_ai_assisted && message.ai_original_content && message.ai_original_content !== message.message && (
+                                <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-medium" title="Admin edited the AI's draft before sending">
+                                  ✏️ edited by admin
+                                </span>
+                              )}
+                              {message.is_ai_assisted && message.ai_original_content && message.ai_original_content === message.message && (
+                                <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-medium" title="Sent exactly as drafted by AI">
+                                  ✨ AI Drafted
+                                </span>
+                              )}
+                            </div>
                             {message.attachment_url && (
                               <div className="mb-2">
                                 {isImageFile(message.attachment_type) ? (
@@ -1047,7 +1059,14 @@ export function ChatInquiries() {
                       rows={4}
                     />
                   ) : (
-                    <p className="text-sm text-gray-800 mb-2 leading-relaxed">{aiSuggestion.text}</p>
+                    <>
+                      {aiOriginalText && aiSuggestion.text !== aiOriginalText && (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium mb-1">
+                          ✏️ edited by admin
+                        </span>
+                      )}
+                      <p className="text-sm text-gray-800 mb-2 leading-relaxed">{aiSuggestion.text}</p>
+                    </>
                   )}
                   {aiSuggestion.citations.length > 0 && (
                     <p className="text-xs text-purple-500 mb-2 italic">Based on: {aiSuggestion.citations.join(' · ')}</p>
@@ -1082,6 +1101,21 @@ export function ChatInquiries() {
                   </button>
                 </div>
               )}
+
+              {aiAuditId && newMessage.trim() && (
+                <div className="mb-2 flex items-center">
+                  {newMessage !== aiOriginalText ? (
+                    <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium shadow-sm">
+                      ✏️ edited by admin
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium shadow-sm">
+                      ✨ AI Draft
+                    </span>
+                  )}
+                </div>
+              )}
+
               <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                 <input
                   ref={fileInputRef}
