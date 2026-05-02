@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { Sparkles, CheckCircle, Edit3, XCircle } from 'lucide-react'
+import { Sparkles, CheckCircle, Edit3, XCircle, Trash2 } from 'lucide-react'
 
 export function AIMetrics() {
   const [stats, setStats] = useState({ accepted: 0, edited: 0, rejected: 0, total: 0 })
@@ -16,7 +16,7 @@ export function AIMetrics() {
       setLoading(true)
       const { data, error } = await supabase
         .from('xin_ai_audit')
-        .select('*')
+        .select('*, employee:xin_employees!xin_ai_audit_employee_id_fkey(first_name, last_name)')
         .order('created_at', { ascending: false })
       
       if (error) throw error
@@ -34,6 +34,19 @@ export function AIMetrics() {
       console.error('Error loading AI stats:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDelete = async (auditId: number) => {
+    if (!window.confirm('Are you sure you want to delete this log?')) return
+    
+    try {
+      const { error } = await supabase.from('xin_ai_audit').delete().eq('audit_id', auditId)
+      if (error) throw error
+      await loadData()
+    } catch (err) {
+      console.error('Error deleting log:', err)
+      alert('Failed to delete log')
     }
   }
 
@@ -91,8 +104,10 @@ export function AIMetrics() {
                     <tr className="bg-gray-50 text-xs uppercase tracking-wider text-gray-500 border-b border-gray-100">
                       <th className="p-4 font-medium">Date</th>
                       <th className="p-4 font-medium">Action</th>
+                      <th className="p-4 font-medium">Sent To</th>
                       <th className="p-4 font-medium w-1/3">Original AI Draft</th>
                       <th className="p-4 font-medium w-1/3">Final Message Sent</th>
+                      <th className="p-4 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -111,17 +126,29 @@ export function AIMetrics() {
                             {log.action || 'pending'}
                           </span>
                         </td>
+                        <td className="p-4 text-xs font-medium text-gray-700">
+                          {log.employee ? `${log.employee.first_name} ${log.employee.last_name}` : 'Unknown'}
+                        </td>
                         <td className="p-4 text-sm text-gray-600">
                           <div className="max-h-24 overflow-y-auto whitespace-pre-wrap">{log.ai_response}</div>
                         </td>
                         <td className="p-4 text-sm text-gray-600">
                           <div className="max-h-24 overflow-y-auto whitespace-pre-wrap">{log.final_message || '-'}</div>
                         </td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => handleDelete(log.audit_id)}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors inline-flex"
+                            title="Delete log"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                     {logs.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="p-8 text-center text-gray-500">
+                        <td colSpan={6} className="p-8 text-center text-gray-500">
                           No AI logs recorded yet.
                         </td>
                       </tr>
