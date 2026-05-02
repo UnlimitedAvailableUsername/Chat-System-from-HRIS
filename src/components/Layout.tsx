@@ -7,11 +7,11 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
 
-  // Document title for the chat page (production has a full pathTitles map; we only need this one).
   useEffect(() => {
-    const title = location.pathname.startsWith('/admin/chat-inquiries')
-      ? 'Chat Inquiries - Clean Edge HRIS'
-      : 'Clean Edge HRIS'
+    const title =
+      location.pathname.startsWith('/admin/chat-inquiries') ? 'Chat Inquiries - Clean Edge HRIS' :
+      location.pathname.startsWith('/admin/ai-audit')       ? 'AI Draft Audit - Clean Edge HRIS' :
+      'Clean Edge HRIS'
     document.title = title
   }, [location.pathname])
 

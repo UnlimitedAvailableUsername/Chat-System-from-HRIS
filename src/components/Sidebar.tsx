@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useEmployeeAuth } from '../contexts/EmployeeAuthContext'
-import { LogOut, MessageSquare, X, CircleUser as UserCircle, QrCode } from 'lucide-react'
+import { LogOut, MessageSquare, X, CircleUser as UserCircle, QrCode, BotMessageSquare } from 'lucide-react'
 import { useChatNotifications } from '../hooks/useChatNotifications'
 
 interface SidebarProps {
@@ -75,6 +75,21 @@ export function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
                   {unreadChatCount}
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => handleNavigate('/admin/ai-audit')}
+              className={`
+                w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                ${isActive('/admin/ai-audit')
+                  ? 'bg-slate-900 text-white'
+                  : 'text-gray-700 hover:bg-gray-100'
+                }
+              `}
+            >
+              <div className="flex items-center gap-3">
+                <BotMessageSquare className="w-5 h-5" />
+                A.I. Draft Audit
+              </div>
             </button>
           </div>
         </nav>

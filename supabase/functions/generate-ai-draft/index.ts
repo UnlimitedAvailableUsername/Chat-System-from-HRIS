@@ -287,6 +287,7 @@ Write the admin reply now.
       JSON.stringify({
         draft,
         confidence,
+        prompt: userPrompt,  
         meta: {
           message_count: messageCount,
           payroll_cutoffs_loaded: payrollRecords.length,
@@ -295,7 +296,6 @@ Write the admin reply now.
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
-
   } catch (err: any) {
     console.error("Edge Function Error:", err)
     return new Response(JSON.stringify({ error: err.message || "Unknown error" }), {

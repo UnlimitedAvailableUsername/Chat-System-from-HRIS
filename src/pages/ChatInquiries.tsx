@@ -163,6 +163,8 @@ export function ChatInquiries() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [aiPrompt, setAiPrompt] = useState('')
+
   const prevMessageCountRef = useRef<number>(0)
   const shouldScrollRef = useRef<boolean>(true)
   const [resolving, setResolving] = useState(false)
@@ -269,7 +271,8 @@ export function ChatInquiries() {
     setAiOriginalDraft('')
     setAiConfidence(null)
     setAiPanelOpen(false)
-    setAiMeta(null)  // add this line
+    setAiMeta(null)  
+    setAiPrompt('')
   }, [selectedChatId])
 
   const scrollToBottom = () => {
@@ -570,6 +573,7 @@ export function ChatInquiries() {
       setAiDraft(data.draft)
       setAiOriginalDraft(data.draft)
       setAiConfidence(data.confidence)
+      setAiPrompt(data.prompt ?? '')
     } catch (err: any) {
       console.error("AI generation error:", err)
       notify("error", "AI Draft Failed", err.message || "Failed to generate AI draft.")
@@ -586,7 +590,7 @@ export function ChatInquiries() {
       const { error } = await supabase.from('xin_ai_audit').insert({
         employee_id: selectedEmployee.employee_id,   // was: conversation_id: selectedEmployee.chat_id
         admin_user_id: user.user_id,                  // was: admin_id: user.user_id
-        prompt: '(generated server-side)',
+        prompt: aiPrompt || '(generated server-side)',
         ai_response: aiOriginalDraft,
         final_message: null,
         action: 'rejected',
@@ -647,7 +651,7 @@ export function ChatInquiries() {
       const { error: auditError } = await supabase.from('xin_ai_audit').insert({
         employee_id: selectedEmployee.employee_id,
         admin_user_id: user.user_id,
-        prompt: '(generated server-side)',
+        prompt: aiPrompt || '(generated server-side)',
         ai_response: aiOriginalDraft,
         final_message: messageToSend,
         action: wasEdited ? 'edited' : 'accepted',
