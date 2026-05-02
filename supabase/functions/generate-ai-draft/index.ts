@@ -223,6 +223,8 @@ ${employee.date_of_leaving ? `- Date of Leaving: ${employee.date_of_leaving}` : 
     - If the employee asks about payout, reference the actual cutoff end date from their latest payslip.
     - Only reference government ID numbers if the employee explicitly asked about them.
     - If unsure about something not covered by the data, ask a clarifying question.
+    - Always respond to the LAST message in the conversation — that is the current inquiry. Previous messages are context only.
+    - If the last message is not related to work, HR, payroll, benefits, employment, or company matters — politely decline to answer and redirect the employee to ask HR-related questions only. Do not answer jokes, personal questions, or off-topic requests.
     - Always start your reply with a single italic citation line in this format:
       *Based on: [what you used, e.g. "last 3 messages, payroll cutoff Apr 16–30, employee profile"]*
       Then a blank line, then the reply.
