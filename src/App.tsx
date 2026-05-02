@@ -8,6 +8,7 @@ import { Layout } from './components/Layout'
 import { ChatInquiries } from './pages/ChatInquiries'
 import { EmployeeChatSupport } from './pages/EmployeeChatSupport'
 import { EmployeePayslip } from './pages/EmployeePayslip'
+import { AIMetrics } from './pages/AIMetrics'
 
 export function App() {
   const { user, loading: adminLoading } = useAuth()
@@ -34,6 +35,7 @@ export function App() {
         <Route path="/admin" element={<Layout />}>
           <Route path="chat-inquiries" element={<ChatInquiries />} />
           <Route path="chat-inquiries/:threadId" element={<ChatInquiries />} />
+          <Route path="ai-metrics" element={<AIMetrics />} />
           {/* Demo build: every other admin path quietly redirects back to chat. */}
           <Route path="*" element={<Navigate to="/admin/chat-inquiries" replace />} />
         </Route>

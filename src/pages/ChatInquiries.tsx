@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { MessageSquare, RefreshCw, Search, Send, Paperclip, X, FileText, Image as ImageIcon, CheckCheck, CheckCircle, Info, User, Briefcase, CreditCard, ExternalLink } from 'lucide-react'
+import { MessageSquare, RefreshCw, Search, Send, Paperclip, X, FileText, Image as ImageIcon, CheckCheck, CheckCircle, Info, User, Briefcase, CreditCard, ExternalLink, Sparkles, BarChart2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { NotificationDialog, NotificationType } from '../components/NotificationDialog'
+import { generateAISuggestion, AISuggestion } from '../lib/ai'
+import { Message } from '../types'
 
 // Copied from production. Stripped from this version:
 //  - Applicant chat support (the demo only has employee↔admin chat).
@@ -23,19 +25,6 @@ interface EmployeeChat {
   employee_contact?: string
 }
 
-interface Message {
-  message_id: number
-  employee_id?: number
-  message: string
-  sender_type: 'employee' | 'admin' | 'system'
-  created_at: string
-  is_read: boolean
-  attachment_url?: string
-  attachment_name?: string
-  attachment_type?: string
-  admin_user_id?: number
-  admin_name?: string
-}
 
 interface EmployeeDetail {
   user_id: number
@@ -133,6 +122,15 @@ export function ChatInquiries() {
   const [infoPanelData, setInfoPanelData] = useState<EmployeeDetail | null>(null)
   const [infoPanelLoading, setInfoPanelLoading] = useState(false)
 
+  // AI state
+  const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiAuditId, setAiAuditId] = useState<number | null>(null)
+  const [aiOriginalText, setAiOriginalText] = useState<string>('')
+  const [isEditingSuggestion, setIsEditingSuggestion] = useState(false)
+  const [aiStats, setAiStats] = useState({ accepted: 0, edited: 0, rejected: 0 })
+  const [showAiStats, setShowAiStats] = useState(false)
+
   const [notification, setNotification] = useState<{ isOpen: boolean; type: NotificationType; title: string; message: string }>({
     isOpen: false, type: 'error', title: '', message: ''
   })
@@ -147,7 +145,24 @@ export function ChatInquiries() {
 
   const selectedEmployee = employeeChats.find(chat => chat.chat_id === selectedChatId) || null
 
+  const loadAiStats = async () => {
+    try {
+      const { data, error } = await supabase.from('xin_ai_audit').select('action')
+      if (error) throw error
+      const stats = { accepted: 0, edited: 0, rejected: 0 }
+      data?.forEach(row => {
+        if (row.action === 'accepted') stats.accepted++
+        if (row.action === 'edited') stats.edited++
+        if (row.action === 'rejected') stats.rejected++
+      })
+      setAiStats(stats)
+    } catch (err) {
+      console.error('Error loading AI stats:', err)
+    }
+  }
+
   useEffect(() => {
+    loadAiStats()
     loadEmployeeChats(true)
 
     const channel = supabase
@@ -469,6 +484,75 @@ export function ChatInquiries() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  const handleSuggestReply = async () => {
+    if (!selectedEmployee || aiLoading) return
+    setAiLoading(true)
+    setAiSuggestion(null)
+
+    const employeeContext = [
+      `Name: ${selectedEmployee.employee_name}`,
+      selectedEmployee.employee_email ? `Email: ${selectedEmployee.employee_email}` : '',
+      selectedEmployee.employee_company ? `Company: ${selectedEmployee.employee_company}` : ''
+    ].filter(Boolean).join('\n')
+
+    const adminName = user?.first_name && user?.last_name
+      ? `${user.first_name} ${user.last_name}`
+      : user?.username || 'Admin'
+
+    const suggestion = await generateAISuggestion(messages, selectedEmployee.employee_name, employeeContext, adminName)
+    if (suggestion) {
+      setAiSuggestion(suggestion)
+      setAiOriginalText(suggestion.text)
+      setIsEditingSuggestion(false)
+
+      // Log to audit table (pending action)
+      try {
+        const recentHistory = messages
+          .slice(-10)
+          .map(m => `${m.sender_type}: ${m.message}`)
+          .join('\n')
+
+        const { data } = await supabase
+          .from('xin_ai_audit')
+          .insert({
+            admin_user_id: user!.user_id,
+            employee_id: selectedEmployee.employee_id,
+            prompt: recentHistory,
+            ai_response: suggestion.text,
+            confidence: suggestion.confidence,
+            citations: suggestion.citations,
+            action: null
+          })
+          .select('audit_id')
+          .single()
+        if (data) setAiAuditId(data.audit_id)
+      } catch (err) {
+        console.error('Failed to log AI suggestion:', err)
+      }
+    } else {
+      notify('error', 'AI Error', 'Could not generate a suggestion. Check your API key.')
+    }
+    setAiLoading(false)
+  }
+
+  const handleDiscardSuggestion = async () => {
+    if (aiAuditId) {
+      await supabase.from('xin_ai_audit').update({ action: 'rejected' }).eq('audit_id', aiAuditId)
+      await loadAiStats()
+    }
+    setAiSuggestion(null)
+    setAiAuditId(null)
+    setAiOriginalText('')
+    setIsEditingSuggestion(false)
+  }
+
+  const handleApplySuggestion = () => {
+    if (!aiSuggestion) return
+    setNewMessage(aiSuggestion.text)
+    setAiSuggestion(null)
+    setIsEditingSuggestion(false)
+  }
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if ((!newMessage.trim() && !selectedFile) || !selectedEmployee || !user) return
@@ -493,19 +577,36 @@ export function ChatInquiries() {
         attachmentType = selectedFile.type
       }
 
+      const finalMessage = newMessage.trim() || '(Attachment)'
+      const isAiAssisted = !!aiAuditId
+      const wasEdited = isAiAssisted && finalMessage !== aiOriginalText
+
       const { error } = await supabase
         .from('xin_employee_messages')
         .insert({
           employee_id: selectedEmployee.employee_id,
-          message: newMessage.trim() || '(Attachment)',
+          message: finalMessage,
           sender_type: 'admin',
           is_read: false,
           admin_user_id: user.user_id,
           attachment_url: attachmentUrl,
           attachment_name: attachmentName,
-          attachment_type: attachmentType
+          attachment_type: attachmentType,
+          is_ai_assisted: isAiAssisted,
+          ai_original_content: isAiAssisted ? aiOriginalText : null
         })
       if (error) throw error
+
+      // Update audit record with final action
+      if (aiAuditId) {
+        await supabase.from('xin_ai_audit').update({
+          action: wasEdited ? 'edited' : 'accepted',
+          final_message: finalMessage
+        }).eq('audit_id', aiAuditId)
+        setAiAuditId(null)
+        setAiOriginalText('')
+        await loadAiStats()
+      }
 
       setNewMessage('')
       setSelectedFile(null)
@@ -612,7 +713,38 @@ export function ChatInquiries() {
               <CheckCheck className="w-4 h-4" />
               Read All
             </button>
+            <button
+              onClick={() => setShowAiStats(!showAiStats)}
+              className={`flex items-center justify-center w-10 h-10 rounded transition-colors ml-auto ${
+                showAiStats ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 hover:bg-gray-200 text-purple-600'
+              }`}
+              title="AI Metrics Dashboard"
+            >
+              <BarChart2 className="w-5 h-5" />
+            </button>
           </div>
+
+          {showAiStats && (
+            <div className="mb-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
+              <h4 className="text-xs font-bold text-purple-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" /> AI Metrics
+              </h4>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-white rounded py-1.5 border border-purple-100">
+                  <div className="text-lg font-bold text-green-600 leading-none">{aiStats.accepted}</div>
+                  <div className="text-[10px] text-gray-500 font-medium uppercase mt-1">Accepted</div>
+                </div>
+                <div className="bg-white rounded py-1.5 border border-purple-100">
+                  <div className="text-lg font-bold text-blue-600 leading-none">{aiStats.edited}</div>
+                  <div className="text-[10px] text-gray-500 font-medium uppercase mt-1">Edited</div>
+                </div>
+                <div className="bg-white rounded py-1.5 border border-purple-100">
+                  <div className="text-lg font-bold text-red-500 leading-none">{aiStats.rejected}</div>
+                  <div className="text-[10px] text-gray-500 font-medium uppercase mt-1">Rejected</div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -887,6 +1019,56 @@ export function ChatInquiries() {
             </div>
 
             <div className="bg-white border-t border-gray-200 p-4">
+              {/* AI Suggestion Card */}
+              {aiSuggestion && (
+                <div className="mb-3 border border-purple-200 bg-purple-50 rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-purple-500" />
+                      <span className="text-xs font-semibold text-purple-700">AI Suggested Reply</span>
+                      <span className="text-xs text-purple-400">via OpenAI</span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        aiSuggestion.confidence >= 75 ? 'bg-green-100 text-green-700' :
+                        aiSuggestion.confidence >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {aiSuggestion.confidence}% confident
+                      </span>
+                    </div>
+                    <button onClick={handleDiscardSuggestion} className="text-gray-400 hover:text-red-500 transition-colors">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {isEditingSuggestion ? (
+                    <textarea
+                      value={aiSuggestion.text}
+                      onChange={(e) => setAiSuggestion({ ...aiSuggestion, text: e.target.value })}
+                      className="w-full text-sm text-gray-800 mb-2 p-2 rounded border border-purple-300 focus:ring-2 focus:ring-purple-500 outline-none"
+                      rows={4}
+                    />
+                  ) : (
+                    <p className="text-sm text-gray-800 mb-2 leading-relaxed">{aiSuggestion.text}</p>
+                  )}
+                  {aiSuggestion.citations.length > 0 && (
+                    <p className="text-xs text-purple-500 mb-2 italic">Based on: {aiSuggestion.citations.join(' · ')}</p>
+                  )}
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={handleApplySuggestion}
+                      className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      Apply to input
+                    </button>
+                    <button
+                      onClick={() => setIsEditingSuggestion(!isEditingSuggestion)}
+                      className="text-xs px-3 py-1.5 bg-white text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors"
+                    >
+                      {isEditingSuggestion ? 'Done Editing' : 'Edit'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {selectedFile && (
                 <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 rounded-lg">
                   {getFileIcon(selectedFile.type)}
@@ -924,6 +1106,16 @@ export function ChatInquiries() {
                   className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={sendingMessage || uploading}
                 />
+                <button
+                  type="button"
+                  onClick={handleSuggestReply}
+                  disabled={aiLoading || sendingMessage || messages.length === 0}
+                  className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm font-medium"
+                  title="Generate AI reply suggestion"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {aiLoading ? 'Thinking...' : 'Suggest'}
+                </button>
                 <button
                   type="submit"
                   disabled={(!newMessage.trim() && !selectedFile) || sendingMessage || uploading}
