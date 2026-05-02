@@ -86,6 +86,7 @@ export function AiAuditDashboard() {
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [actionFilter, setActionFilter] = useState<'all' | 'accepted' | 'edited' | 'rejected'>('all')
+  const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     load()
@@ -141,7 +142,20 @@ export function AiAuditDashboard() {
 
   const acceptRate = stats.total > 0 ? Math.round(((stats.accepted + stats.edited) / stats.total) * 100) : 0
 
-  const filtered = actionFilter === 'all' ? rows : rows.filter(r => r.action === actionFilter)
+  const filtered = rows.filter((r) => {
+    const matchesAction = actionFilter === 'all' ? true : r.action === actionFilter
+
+    const q = searchTerm.toLowerCase().trim()
+
+    const matchesSearch =
+            !q ||
+            r.employee_name?.toLowerCase().includes(q) ||
+            r.admin_name?.toLowerCase().includes(q) ||
+            r.ai_response?.toLowerCase().includes(q) ||
+            r.final_message?.toLowerCase().includes(q)
+
+        return matchesAction && matchesSearch
+    })
 
   const formatTime = (dateString: string) =>
     new Date(dateString).toLocaleString('en-US', {
@@ -252,6 +266,15 @@ export function AiAuditDashboard() {
           {/* Audit Log Table */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                <div className="relative w-full sm:w-72">
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search employee, admin, or message..."
+                        className="w-full rounded-full border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                    />
+                </div>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-gray-400" />
                 <h2 className="text-sm font-semibold text-gray-700">Audit Log</h2>

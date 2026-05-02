@@ -88,7 +88,7 @@ export function Sidebar({ sidebarOpen, setSidebarOpen }: SidebarProps) {
             >
               <div className="flex items-center gap-3">
                 <BotMessageSquare className="w-5 h-5" />
-                A.I. Draft Audit
+                AI Draft Audit
               </div>
             </button>
           </div>
