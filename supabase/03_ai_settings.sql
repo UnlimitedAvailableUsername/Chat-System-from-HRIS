@@ -3,6 +3,7 @@ create table if not exists public.xin_ai_settings (
   provider text not null default 'openai',
   model text not null default 'gpt-5-mini',
   system_prompt text not null default 'You are an HR support assistant.\nHelp the admin draft a helpful, professional, and concise reply to the employee.',
+  enable_rag boolean not null default false,
   updated_at timestamptz not null default now()
 );
 

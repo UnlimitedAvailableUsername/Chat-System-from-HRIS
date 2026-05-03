@@ -143,6 +143,54 @@ export function ChatInquiries() {
     setSelectedChatId(decoded)
   }, [threadId])
 
+  const draftsCacheKey = 'hris_ai_drafts'
+  const activeChatIdRef = useRef<string | null>(null)
+
+  // Load draft when switching chats
+  useEffect(() => {
+    if (selectedChatId) {
+      try {
+        const drafts = JSON.parse(sessionStorage.getItem(draftsCacheKey) || '{}')
+        const draft = drafts[selectedChatId] || {
+          newMessage: '',
+          aiSuggestion: null,
+          aiAuditId: null,
+          aiOriginalText: '',
+          isEditingSuggestion: false
+        }
+        setNewMessage(draft.newMessage || '')
+        setAiSuggestion(draft.aiSuggestion || null)
+        setAiAuditId(draft.aiAuditId || null)
+        setAiOriginalText(draft.aiOriginalText || '')
+        setIsEditingSuggestion(draft.isEditingSuggestion || false)
+        activeChatIdRef.current = selectedChatId
+      } catch (e) {
+        console.error('Failed to load draft', e)
+      }
+    } else {
+      activeChatIdRef.current = null
+    }
+  }, [selectedChatId])
+
+  // Save draft continuously while editing
+  useEffect(() => {
+    if (selectedChatId && activeChatIdRef.current === selectedChatId) {
+      try {
+        const drafts = JSON.parse(sessionStorage.getItem(draftsCacheKey) || '{}')
+        drafts[selectedChatId] = {
+          newMessage,
+          aiSuggestion,
+          aiAuditId,
+          aiOriginalText,
+          isEditingSuggestion
+        }
+        sessionStorage.setItem(draftsCacheKey, JSON.stringify(drafts))
+      } catch (e) {
+        console.error('Failed to save draft', e)
+      }
+    }
+  }, [selectedChatId, newMessage, aiSuggestion, aiAuditId, aiOriginalText, isEditingSuggestion])
+
   const selectedEmployee = employeeChats.find(chat => chat.chat_id === selectedChatId) || null
 
   const loadAiStats = async () => {

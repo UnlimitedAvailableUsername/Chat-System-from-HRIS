@@ -78,6 +78,7 @@ export async function generateAISuggestion(
   let provider = 'openai';
   let model = 'gpt-5-mini';
   let systemPromptStr = 'You are an HR support assistant.\nHelp the admin draft a helpful, professional, and concise reply to the employee.';
+  let enableRag = false;
 
   try {
     const { data } = await supabase.from('xin_ai_settings').select('*').eq('id', 1).single();
@@ -85,12 +86,19 @@ export async function generateAISuggestion(
       provider = data.provider;
       model = data.model;
       systemPromptStr = data.system_prompt;
+      enableRag = data.enable_rag;
     }
   } catch (err) {
     console.error('Failed to load AI settings from DB', err);
   }
 
   const prompt = buildPrompt(messages, employeeName, employeeContext, adminName, systemPromptStr);
+
+  // Future RAG implementation would go here:
+  // if (enableRag) {
+  //   const docs = await performVectorSearch(messages[messages.length - 1].message);
+  //   prompt = appendDocsToPrompt(prompt, docs);
+  // }
 
   try {
     const result = await tryOpenAI(prompt, model);

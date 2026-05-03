@@ -6,6 +6,7 @@ export function AISettings() {
   const [provider, setProvider] = useState('openai')
   const [model, setModel] = useState('gpt-5-mini')
   const [systemPrompt, setSystemPrompt] = useState('You are an HR support assistant.\nHelp the admin draft a helpful, professional, and concise reply to the employee.')
+  const [enableRag, setEnableRag] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -21,6 +22,7 @@ export function AISettings() {
         setProvider(data.provider)
         setModel(data.model)
         setSystemPrompt(data.system_prompt)
+        setEnableRag(data.enable_rag)
       }
     } catch (err) {
       console.error('Error loading AI settings:', err)
@@ -37,6 +39,7 @@ export function AISettings() {
         provider,
         model,
         system_prompt: systemPrompt,
+        enable_rag: enableRag,
         updated_at: new Date().toISOString()
       })
       if (error) throw error
@@ -85,6 +88,29 @@ export function AISettings() {
                   <option value="gpt-5-nano">GPT-5 Nano (Ultra Fast)</option>
                 </optgroup>
               </select>
+            </div>
+
+            <div className="mb-6 border-b border-gray-100 pb-6">
+              <div className="flex items-center justify-between w-full md:w-1/2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Enable Knowledge Retrieval (RAG)
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Allow the AI to search company policies and documents before answering.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={enableRag}
+                    onChange={(e) => setEnableRag(e.target.checked)}
+                    disabled={loading}
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600 disabled:opacity-50"></div>
+                </label>
+              </div>
             </div>
 
             <div>
