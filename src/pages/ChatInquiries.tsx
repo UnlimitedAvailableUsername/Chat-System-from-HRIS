@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { MessageSquare, RefreshCw, Search, Send, Paperclip, X, FileText, Image as ImageIcon, CheckCheck, CheckCircle, Info, User, Briefcase, CreditCard, ExternalLink } from 'lucide-react'
+import { MessageSquare, RefreshCw, Search, Send, Paperclip, X, FileText, Image as ImageIcon, CheckCheck, CheckCircle, Info, User, Briefcase, CreditCard, ExternalLink, Sparkles, Check, Pencil, XCircle, BarChart2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { NotificationDialog, NotificationType } from '../components/NotificationDialog'
+import { generateAIDraft, logAIAudit, AIDraftResult } from '../lib/aiService'
 
 // Copied from production. Stripped from this version:
 //  - Applicant chat support (the demo only has employee↔admin chat).
@@ -132,6 +133,13 @@ export function ChatInquiries() {
   const [showInfoPanel, setShowInfoPanel] = useState(false)
   const [infoPanelData, setInfoPanelData] = useState<EmployeeDetail | null>(null)
   const [infoPanelLoading, setInfoPanelLoading] = useState(false)
+
+  // AI draft state
+  const [aiDraft, setAiDraft] = useState<AIDraftResult | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [showAiStats, setShowAiStats] = useState(false)
+  const [aiStats, setAiStats] = useState<{ accepted: number; edited: number; rejected: number } | null>(null)
 
   const [notification, setNotification] = useState<{ isOpen: boolean; type: NotificationType; title: string; message: string }>({
     isOpen: false, type: 'error', title: '', message: ''
@@ -402,6 +410,8 @@ export function ChatInquiries() {
     setSelectedChatId(chat.chat_id)
     setShowInfoPanel(false)
     setInfoPanelData(null)
+    setAiDraft(null)
+    setAiError(null)
     navigate(`/admin/chat-inquiries/${encodeThreadId(chat)}`, { replace: true })
   }
 
@@ -469,6 +479,74 @@ export function ChatInquiries() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  // ── AI Draft functions ────────────────────────────────────────────────────
+
+  const handleGenerateAIDraft = async () => {
+    if (!selectedEmployee || messages.length === 0) return
+    setAiLoading(true)
+    setAiError(null)
+    setAiDraft(null)
+    try {
+      // Convert DB messages to AI message format
+      const aiMessages = messages
+        .filter(m => m.sender_type !== 'system')
+        .slice(-10) // last 10 messages for context window efficiency
+        .map(m => ({
+          role: m.sender_type === 'employee' ? 'user' as const : 'assistant' as const,
+          content: m.message
+        }))
+      const result = await generateAIDraft(
+        aiMessages,
+        selectedEmployee.employee_name,
+        {
+          designation: infoPanelData?.designation_name,
+          company: selectedEmployee.employee_company,
+          employeeId: selectedEmployee.employee_id
+        }
+      )
+      setAiDraft(result)
+    } catch (err: any) {
+      setAiError(err.message || 'Failed to generate AI draft')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const handleAcceptAIDraft = () => {
+    if (!aiDraft) return
+    setNewMessage(aiDraft.draft)
+    // Log that the draft was accepted (will be confirmed on send)
+    setAiDraft({ ...aiDraft, _pendingAction: 'accepted' } as any)
+  }
+
+  const handleRejectAIDraft = async () => {
+    if (!aiDraft || !selectedEmployee) return
+    await logAIAudit({
+      employee_id: selectedEmployee.employee_id,
+      prompt_summary: `Last ${messages.length} messages from ${selectedEmployee.employee_name}`,
+      ai_draft: aiDraft.draft,
+      action: 'rejected',
+      confidence: aiDraft.confidence,
+      confidence_score: aiDraft.confidenceScore,
+      admin_user_id: user?.user_id
+    })
+    setAiDraft(null)
+    setNewMessage('')
+  }
+
+  const loadAiStats = async () => {
+    if (showAiStats) { setShowAiStats(false); return }
+    try {
+      const { data } = await supabase.from('xin_ai_audit').select('action')
+      const stats = { accepted: 0, edited: 0, rejected: 0 }
+      data?.forEach(r => { stats[r.action as keyof typeof stats]++ })
+      setAiStats(stats)
+      setShowAiStats(true)
+    } catch { /* silently fail */ }
+  }
+
+  // ── Send Message (with AI audit) ─────────────────────────────────────────
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if ((!newMessage.trim() && !selectedFile) || !selectedEmployee || !user) return
@@ -506,6 +584,28 @@ export function ChatInquiries() {
           attachment_type: attachmentType
         })
       if (error) throw error
+
+      // Log AI audit if there was a draft involved
+      if (aiDraft && selectedEmployee) {
+        const finalMsg = newMessage.trim()
+        const draftMsg = aiDraft.draft.trim()
+        const action = (aiDraft as any)._pendingAction === 'accepted' && finalMsg === draftMsg
+          ? 'accepted'
+          : (aiDraft as any)._pendingAction === 'accepted'
+          ? 'edited'
+          : 'accepted'
+        await logAIAudit({
+          employee_id: selectedEmployee.employee_id,
+          prompt_summary: `Last ${messages.length} messages from ${selectedEmployee.employee_name}`,
+          ai_draft: draftMsg,
+          action,
+          final_message: finalMsg,
+          confidence: aiDraft.confidence,
+          confidence_score: aiDraft.confidenceScore,
+          admin_user_id: user.user_id
+        })
+        setAiDraft(null)
+      }
 
       setNewMessage('')
       setSelectedFile(null)
@@ -887,6 +987,76 @@ export function ChatInquiries() {
             </div>
 
             <div className="bg-white border-t border-gray-200 p-4">
+              {/* ── AI Draft Panel ── */}
+              {(aiDraft || aiLoading || aiError) && (
+                <div className="mb-3 rounded-xl border border-purple-200 bg-purple-50 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <span className="text-xs font-semibold text-purple-700 uppercase tracking-wide">AI Draft Reply</span>
+                    {aiDraft && (
+                      <span className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full ${
+                        aiDraft.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                        aiDraft.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        ✨ {aiDraft.confidenceScore}% confident
+                      </span>
+                    )}
+                  </div>
+                  {aiLoading && (
+                    <div className="flex items-center gap-2 text-sm text-purple-600 py-1">
+                      <div className="w-4 h-4 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin"></div>
+                      Generating draft…
+                    </div>
+                  )}
+                  {aiError && (
+                    <p className="text-xs text-red-600">{aiError}</p>
+                  )}
+                  {aiDraft && !aiLoading && (
+                    <>
+                      <p className="text-sm text-gray-800 mb-2 leading-relaxed">{aiDraft.draft}</p>
+                      <p className="text-[11px] text-purple-500 mb-2 italic">📎 {aiDraft.citationNote}</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleAcceptAIDraft}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          <Check className="w-3 h-3" /> Use Draft
+                        </button>
+                        <button
+                          onClick={() => { if (aiDraft) setNewMessage(aiDraft.draft); }}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                          <Pencil className="w-3 h-3" /> Edit
+                        </button>
+                        <button
+                          onClick={handleRejectAIDraft}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 transition-colors"
+                        >
+                          <XCircle className="w-3 h-3" /> Reject
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── AI Stats mini-popup ── */}
+              {showAiStats && aiStats && (
+                <div className="mb-3 p-3 rounded-xl border border-blue-200 bg-blue-50 text-xs">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BarChart2 className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="font-semibold text-blue-700">AI Usage Stats (all time)</span>
+                    <button onClick={() => setShowAiStats(false)} className="ml-auto text-blue-400 hover:text-blue-600"><X className="w-3 h-3" /></button>
+                  </div>
+                  <div className="flex gap-4 text-gray-700">
+                    <span>✅ Accepted: <strong>{aiStats.accepted}</strong></span>
+                    <span>✏️ Edited: <strong>{aiStats.edited}</strong></span>
+                    <span>❌ Rejected: <strong>{aiStats.rejected}</strong></span>
+                  </div>
+                </div>
+              )}
+
               {selectedFile && (
                 <div className="mb-2 flex items-center gap-2 p-2 bg-gray-100 rounded-lg">
                   {getFileIcon(selectedFile.type)}
@@ -924,6 +1094,26 @@ export function ChatInquiries() {
                   className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={sendingMessage || uploading}
                 />
+                {/* AI Draft button */}
+                <button
+                  type="button"
+                  onClick={handleGenerateAIDraft}
+                  disabled={aiLoading || messages.length === 0}
+                  title="Generate AI draft reply"
+                  className="flex items-center gap-1 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors disabled:opacity-40 text-sm font-medium"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  AI
+                </button>
+                {/* Stats button */}
+                <button
+                  type="button"
+                  onClick={loadAiStats}
+                  title="View AI usage stats"
+                  className="p-2 text-gray-400 hover:text-blue-600 rounded transition-colors"
+                >
+                  <BarChart2 className="w-4 h-4" />
+                </button>
                 <button
                   type="submit"
                   disabled={(!newMessage.trim() && !selectedFile) || sendingMessage || uploading}

@@ -302,7 +302,10 @@ export function EmployeeChatSupport() {
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-800">Chat Support</h2>
-              <p className="text-xs text-gray-600">Ask us anything</p>
+              <p className="text-xs text-gray-500 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                AI-assisted support · Ask us anything
+              </p>
             </div>
           </div>
         </div>
