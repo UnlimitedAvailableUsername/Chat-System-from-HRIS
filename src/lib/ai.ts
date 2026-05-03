@@ -11,7 +11,7 @@ export interface AISuggestion {
   model?: string;
 }
 
-function buildPrompt(messages: Message[], employeeName: string, employeeContext: string, adminName: string, systemPromptStr: string): string {
+function buildPrompt(messages: Message[], employeeName: string, employeeContext: string, adminName: string, systemPromptStr: string, ragContext: string = ''): string {
   const history = messages
     .slice(-10)
     .map(m => `${m.sender_type === 'admin' ? adminName : employeeName}: ${m.message}`)
@@ -21,7 +21,7 @@ function buildPrompt(messages: Message[], employeeName: string, employeeContext:
 
 EMPLOYEE CONTEXT:
 ${employeeContext}
-
+${ragContext ? `\nCOMPANY KNOWLEDGE BASE (Policies & Info):\n${ragContext}\n` : ''}
 CONVERSATION HISTORY:
 ${history}
 
@@ -92,13 +92,30 @@ export async function generateAISuggestion(
     console.error('Failed to load AI settings from DB', err);
   }
 
-  const prompt = buildPrompt(messages, employeeName, employeeContext, adminName, systemPromptStr);
+  let ragContext = '';
+  if (enableRag && messages.length > 0) {
+    const latestUserMessage = [...messages].reverse().find(m => m.sender_type === 'employee')?.message;
+    if (latestUserMessage) {
+      // Format as "word1 OR word2 OR word3" so Postgres full-text search matches any keyword
+      const orQuery = latestUserMessage
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .trim()
+        .split(/\s+/)
+        .filter(w => w.length > 2) // skip very short words
+        .join(' OR ');
 
-  // Future RAG implementation would go here:
-  // if (enableRag) {
-  //   const docs = await performVectorSearch(messages[messages.length - 1].message);
-  //   prompt = appendDocsToPrompt(prompt, docs);
-  // }
+      const { data: documents, error } = await supabase.rpc('search_documents', {
+        search_query: orQuery || latestUserMessage,
+        match_count: 3
+      });
+      
+      if (!error && documents && documents.length > 0) {
+        ragContext = documents.map((d: any) => `[${d.title}] ${d.content}`).join('\n\n');
+      }
+    }
+  }
+
+  const prompt = buildPrompt(messages, employeeName, employeeContext, adminName, systemPromptStr, ragContext);
 
   try {
     const result = await tryOpenAI(prompt, model);

@@ -532,7 +532,7 @@ export function ChatInquiries() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleSuggestReply = async () => {
+  const handleSuggestReply = async (targetMessageId?: number) => {
     if (!selectedEmployee || aiLoading) return
     setAiLoading(true)
     setAiSuggestion(null)
@@ -547,7 +547,11 @@ export function ChatInquiries() {
       ? `${user.first_name} ${user.last_name}`
       : user?.username || 'Admin'
 
-    const suggestion = await generateAISuggestion(messages, selectedEmployee.employee_name, employeeContext, adminName)
+    const historyToUse = targetMessageId 
+      ? messages.slice(0, messages.findIndex(m => m.message_id === targetMessageId) + 1)
+      : messages;
+
+    const suggestion = await generateAISuggestion(historyToUse, selectedEmployee.employee_name, employeeContext, adminName)
     if (suggestion) {
       setAiSuggestion(suggestion)
       setAiOriginalText(suggestion.text)
@@ -555,7 +559,7 @@ export function ChatInquiries() {
 
       // Log to audit table (pending action)
       try {
-        const recentHistory = messages
+        const recentHistory = historyToUse
           .slice(-10)
           .map(m => `${m.sender_type}: ${m.message}`)
           .join('\n')
@@ -923,7 +927,7 @@ export function ChatInquiries() {
                           </div>
                         </div>
                       ) : (
-                      <div key={message.message_id} className="mb-4 flex items-start gap-3">
+                      <div key={message.message_id} className="mb-4 flex items-start gap-3 group">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold flex-shrink-0 ${
                           message.sender_type === 'admin'
                             ? 'bg-blue-100 text-blue-600'
@@ -933,21 +937,33 @@ export function ChatInquiries() {
                         </div>
                         <div className="flex-1">
                           <div className="bg-white rounded-lg shadow-sm p-4">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-sm text-gray-900">
-                                {message.sender_type === 'admin'
-                                  ? (message.admin_name || 'Admin')
-                                  : selectedEmployee.employee_name}
-                              </h4>
-                              {message.is_ai_assisted && message.ai_original_content && message.ai_original_content !== message.message && (
-                                <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-medium" title="Admin edited the AI's draft before sending">
-                                  ✏️ edited by admin
-                                </span>
-                              )}
-                              {message.is_ai_assisted && message.ai_original_content && message.ai_original_content === message.message && (
-                                <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-medium" title="Sent exactly as drafted by AI">
-                                  ✨ AI Drafted
-                                </span>
+                            <div className="flex items-start justify-between mb-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-semibold text-sm text-gray-900">
+                                  {message.sender_type === 'admin'
+                                    ? (message.admin_name || 'Admin')
+                                    : selectedEmployee.employee_name}
+                                </h4>
+                                {message.is_ai_assisted && message.ai_original_content && message.ai_original_content !== message.message && (
+                                  <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-medium" title="Admin edited the AI's draft before sending">
+                                    ✏️ edited by admin
+                                  </span>
+                                )}
+                                {message.is_ai_assisted && message.ai_original_content && message.ai_original_content === message.message && (
+                                  <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-medium" title="Sent exactly as drafted by AI">
+                                    ✨ AI Drafted
+                                  </span>
+                                )}
+                              </div>
+                              {message.sender_type === 'employee' && (
+                                <button
+                                  onClick={() => handleSuggestReply(message.message_id)}
+                                  title="Suggest AI reply specifically for this message"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 -mr-2 -mt-2 text-purple-600 hover:bg-purple-100 rounded-lg bg-purple-50 shadow-sm border border-purple-200 flex items-center gap-1.5"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider pr-1">Suggest</span>
+                                </button>
                               )}
                             </div>
                             {message.attachment_url && (
@@ -1190,7 +1206,7 @@ export function ChatInquiries() {
                 />
                 <button
                   type="button"
-                  onClick={handleSuggestReply}
+                  onClick={() => handleSuggestReply()}
                   disabled={aiLoading || sendingMessage || messages.length === 0}
                   className="px-3 py-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 transition-colors disabled:opacity-50 flex items-center gap-1.5 text-sm font-medium"
                   title="Generate AI reply suggestion"
