@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useEmployeeAuth } from '../contexts/EmployeeAuthContext'
 import { EmployeeLayout } from '../components/EmployeeLayout'
 import { supabase } from '../lib/supabase'
-import { Send, MessageCircle, Paperclip, X, FileText, Image as ImageIcon, CheckCircle } from 'lucide-react'
+import { Send, MessageCircle, Paperclip, X, FileText, Image as ImageIcon, CheckCircle, Sparkles } from 'lucide-react'
+import { generateAIDraft, logAIAudit } from '../lib/aiService'
 import {
   ChatFeedbackCard,
   shouldShowFeedbackCard,
@@ -47,6 +48,7 @@ export function EmployeeChatSupport() {
   const shouldScrollRef = useRef<boolean>(true)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedbackAdminId, setFeedbackAdminId] = useState<number | null>(null)
+  const [aiTyping, setAiTyping] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -207,6 +209,63 @@ export function EmployeeChatSupport() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  // ── AI Auto-reply ────────────────────────────────────────────────────────
+  const triggerAIReply = async (employeeMessage: string) => {
+    if (!user) return
+    setAiTyping(true)
+    shouldScrollRef.current = true
+
+    try {
+      // Load latest messages for context
+      const { data: recentMessages } = await supabase
+        .from('xin_employee_messages')
+        .select('message, sender_type')
+        .eq('employee_id', user.user_id)
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      const aiMessages = (recentMessages ?? [])
+        .reverse()
+        .filter(m => m.sender_type !== 'system')
+        .map(m => ({
+          role: m.sender_type === 'employee' ? 'user' as const : 'assistant' as const,
+          content: m.message
+        }))
+
+      const result = await generateAIDraft(
+        aiMessages,
+        `${user.first_name} ${user.last_name}`,
+        { employeeId: user.user_id }
+      )
+
+      // Insert AI reply as an admin message
+      await supabase.from('xin_employee_messages').insert({
+        employee_id: user.user_id,
+        message: result.draft,
+        sender_type: 'admin',
+        is_read: false,
+        admin_user_id: null
+      })
+
+      // Log to audit table
+      await logAIAudit({
+        employee_id: user.user_id,
+        prompt_summary: `Auto-reply to: "${employeeMessage.slice(0, 100)}"`,
+        ai_draft: result.draft,
+        action: 'accepted',
+        final_message: result.draft,
+        confidence: result.confidence,
+        confidence_score: result.confidenceScore
+      })
+
+      await loadMessages()
+    } catch (err) {
+      console.error('AI auto-reply failed:', err)
+    } finally {
+      setAiTyping(false)
+    }
+  }
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if ((!newMessage.trim() && !selectedFile) || !user || sending) return
@@ -257,6 +316,11 @@ export function EmployeeChatSupport() {
       setSelectedFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await loadMessages()
+
+      // ── AI Auto-reply ──────────────────────────────────────────────────────
+      // Trigger after a short delay so the employee sees their message first
+      triggerAIReply(newMessage.trim())
+
     } catch (error) {
       console.error('Error sending message:', error)
       notify('error', 'Send Failed', 'Failed to send message')
@@ -297,14 +361,14 @@ export function EmployeeChatSupport() {
       <div className="flex flex-col h-[calc(100vh-180px)]">
         <div className="bg-white rounded-t-lg shadow p-4 flex-shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-              <MessageCircle className="w-6 h-6 text-green-600" />
+                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+              <Sparkles className="w-6 h-6 text-purple-600" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-gray-800">Chat Support</h2>
+              <h2 className="text-lg font-bold text-gray-800">AI HR Assistant</h2>
               <p className="text-xs text-gray-500 flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
-                AI-assisted support · Ask us anything
+                Online · Replies instantly
               </p>
             </div>
           </div>
@@ -342,8 +406,11 @@ export function EmployeeChatSupport() {
                     }`}
                   >
                     {message.sender_type === 'admin' && (
-                      <p className="text-xs font-semibold mb-1 text-gray-600">
-                        {message.admin_name || 'Admin'}
+                      <p className="text-xs font-semibold mb-1 text-gray-600 flex items-center gap-1">
+                        {!message.admin_user_id
+                          ? <><Sparkles className="w-3 h-3 text-purple-500" /> AI Assistant</>
+                          : message.admin_name || 'HR Admin'
+                        }
                       </p>
                     )}
                     {message.attachment_url && (
@@ -393,6 +460,22 @@ export function EmployeeChatSupport() {
                   onSubmitted={handleFeedbackSubmitted}
                   onSkip={handleFeedbackSkip}
                 />
+              )}
+              {/* AI typing indicator */}
+              {aiTyping && (
+                <div className="flex items-end gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <div className="bg-white border border-purple-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-purple-500 mr-1">AI Assistant is typing</span>
+                      <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    </div>
+                  </div>
+                </div>
               )}
               <div ref={messagesEndRef} />
             </>
