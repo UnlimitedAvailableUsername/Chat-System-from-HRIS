@@ -1038,7 +1038,7 @@ export function ChatInquiries() {
                     <div className="flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4 text-purple-500" />
                       <span className="text-xs font-semibold text-purple-700">AI Suggested Reply</span>
-                      <span className="text-xs text-purple-400">via OpenAI</span>
+                      <span className="text-xs text-purple-400">via OpenAI {aiSuggestion.model ? `(${aiSuggestion.model})` : ''}</span>
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                         aiSuggestion.confidence >= 75 ? 'bg-green-100 text-green-700' :
                         aiSuggestion.confidence >= 50 ? 'bg-yellow-100 text-yellow-700' :

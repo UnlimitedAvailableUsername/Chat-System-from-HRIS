@@ -1,4 +1,5 @@
 import { Message } from '../types';
+import { supabase } from './supabase';
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
@@ -6,17 +7,17 @@ export interface AISuggestion {
   text: string;
   confidence: number;
   citations: string[];
-  provider: 'openai';
+  provider: string;
+  model?: string;
 }
 
-function buildPrompt(messages: Message[], employeeName: string, employeeContext: string, adminName: string): string {
+function buildPrompt(messages: Message[], employeeName: string, employeeContext: string, adminName: string, systemPromptStr: string): string {
   const history = messages
     .slice(-10)
     .map(m => `${m.sender_type === 'admin' ? adminName : employeeName}: ${m.message}`)
     .join('\n');
 
-  return `You are an HR support assistant.
-Help the admin (${adminName}) draft a helpful, professional, and concise reply to the employee.
+  return `${systemPromptStr}
 
 EMPLOYEE CONTEXT:
 ${employeeContext}
@@ -39,8 +40,8 @@ Return ONLY a JSON object:
 }`;
 }
 
-async function tryOpenAI(prompt: string): Promise<Omit<AISuggestion, 'provider'> | null> {
-  if (!OPENAI_API_KEY) return null;
+async function tryOpenAI(prompt: string, model: string): Promise<Omit<AISuggestion, 'provider'> | null> {
+  if (!OPENAI_API_KEY) throw new Error("OpenAI API Key is missing");
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -49,7 +50,7 @@ async function tryOpenAI(prompt: string): Promise<Omit<AISuggestion, 'provider'>
       'Authorization': `Bearer ${OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: 'gpt-5-mini',
+      model: model,
       messages: [
         { role: 'system', content: prompt },
         { role: 'user', content: 'Generate a draft reply for the latest message. Return ONLY valid JSON, no markdown.' }
@@ -64,12 +65,9 @@ async function tryOpenAI(prompt: string): Promise<Omit<AISuggestion, 'provider'>
 
   const data = await response.json();
   let text = data.choices[0].message.content;
-  // Strip markdown code fences if present
   text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   return JSON.parse(text);
 }
-
-
 
 export async function generateAISuggestion(
   messages: Message[],
@@ -77,16 +75,28 @@ export async function generateAISuggestion(
   employeeContext: string,
   adminName: string
 ): Promise<AISuggestion | null> {
-  const prompt = buildPrompt(messages, employeeName, employeeContext, adminName);
+  let provider = 'openai';
+  let model = 'gpt-5-mini';
+  let systemPromptStr = 'You are an HR support assistant.\nHelp the admin draft a helpful, professional, and concise reply to the employee.';
 
-  // Try OpenAI first
-  if (OPENAI_API_KEY) {
-    try {
-      const result = await tryOpenAI(prompt);
-      if (result) return { ...result, provider: 'openai' };
-    } catch (err) {
-      console.error('OpenAI failed:', err);
+  try {
+    const { data } = await supabase.from('xin_ai_settings').select('*').eq('id', 1).single();
+    if (data) {
+      provider = data.provider;
+      model = data.model;
+      systemPromptStr = data.system_prompt;
     }
+  } catch (err) {
+    console.error('Failed to load AI settings from DB', err);
+  }
+
+  const prompt = buildPrompt(messages, employeeName, employeeContext, adminName, systemPromptStr);
+
+  try {
+    const result = await tryOpenAI(prompt, model);
+    if (result) return { ...result, provider: 'openai', model };
+  } catch (err) {
+    console.error('OpenAI failed:', err);
   }
 
   return null;
