@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { NotificationDialog, NotificationType } from '../components/NotificationDialog'
 import { useAISuggestion } from '../hooks/useAISuggestion'
+import AIStats from '../components/AIStats'
 
 // Copied from production. Stripped from this version:
 //  - Applicant chat support (the demo only has employee↔admin chat).
@@ -160,6 +161,7 @@ function AISuggestionPanel({ suggestion, isLoading, error, onAccept, onAcceptEdi
           <Sparkles className="w-3.5 h-3.5" />
           AI Suggested Reply
         </div>
+        <AIStats />
         <button onClick={onReject} className="text-indigo-300 hover:text-indigo-600 transition-colors" title="Dismiss">
           <X className="w-4 h-4" />
         </button>
