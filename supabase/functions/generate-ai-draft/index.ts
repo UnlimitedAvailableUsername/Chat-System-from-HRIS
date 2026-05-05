@@ -229,7 +229,10 @@ Payslip ${i + 1} (Cutoff: ${p.cutoff_date_start} to ${p.cutoff_date_end}):
       *Based on: [what you used, e.g. "last 3 messages, payroll cutoff Apr 16–30, employee profile"]*
       Then a blank line, then the reply.
 
-    Return ONLY the citation line + reply. No subject line, no greeting label.
+    After writing the reply, you must also output a confidence score (0-100) on a NEW line at the very end in this exact format:
+    CONFIDENCE: <number>
+
+    Return ONLY the citation line + reply + confidence line. No extra commentary.
     `.trim()
 
     const userPrompt = `
@@ -271,23 +274,39 @@ Write the admin reply now.
     }
 
     const openAiJson = await openAiRes.json()
-    const draft = openAiJson.choices?.[0]?.message?.content?.trim()
+    const fullOutput = openAiJson.choices?.[0]?.message?.content?.trim()
 
-    if (!draft) {
+    if (!fullOutput) {
       return new Response(JSON.stringify({ error: "No draft generated" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }
 
-    const confidence = buildConfidence(draft)
+    // Extract confidence line
+    let draft = fullOutput
+    let confidence: number | null = null
+
+    const confidenceMatch = fullOutput.match(/CONFIDENCE:\s*(\d{1,3})/i)
+    if (confidenceMatch) {
+      confidence = parseInt(confidenceMatch[1], 10)
+      draft = fullOutput.replace(confidenceMatch[0], "").trim()
+    }
+
+    // Fallback if model gives no confidence
+    if (confidence === null || isNaN(confidence)) {
+      confidence = buildConfidence(draft)
+    }
+
+    if (confidence > 100) confidence = 100
+    if (confidence < 0) confidence = 0
 
     // 8. Return draft + metadata for the UI
     return new Response(
       JSON.stringify({
         draft,
         confidence,
-        prompt: userPrompt,  
+        prompt: userPrompt,
         meta: {
           message_count: messageCount,
           payroll_cutoffs_loaded: payrollRecords.length,
