@@ -189,27 +189,27 @@ Payslip ${i + 1} (Cutoff: ${p.cutoff_date_start} to ${p.cutoff_date_end}):
 
     // 6. Build full prompt
     const employeeContext = `
-Employee Profile:
-- Full Name: ${employee.first_name} ${employee.middle_name ? employee.middle_name + " " : ""}${employee.last_name}
-- Employee ID: ${employee.employee_id || "N/A"}
-- Email: ${employee.email || "N/A"}
-- Contact: ${employee.contact_no || "N/A"}
-- Company: ${companyName}
-- Designation: ${designationName}
-- Role: ${roleName}
-- Gender: ${employee.gender || "N/A"}
-- Civil Status: ${employee.marital_status || "N/A"}
-- Sub-Location: ${employee.sub_location || "N/A"}
-- Status: ${employee.is_active === 1 ? "Active" : "Inactive"}
-- Date Joined: ${employee.date_of_joining || "N/A"}
-${employee.date_of_leaving ? `- Date of Leaving: ${employee.date_of_leaving}` : ""}
-- SSS No: ${employee.sss_no || "N/A"}
-- PhilHealth No: ${employee.philhealth_no || "N/A"}
-- Pag-IBIG No: ${employee.pagibig_no || "N/A"}
-- TIN: ${employee.tin_no || "N/A"}
-- NBI Expiry: ${employee.nbi_exp || "N/A"}
-- Healthcard Expiry: ${employee.healthcard_exp || "N/A"}
-`.trim()
+    Employee Profile:
+    - Full Name: ${employee.first_name} ${employee.middle_name ? employee.middle_name + " " : ""}${employee.last_name}
+    - Employee ID: ${employee.employee_id || "N/A"}
+    - Email: ${employee.email || "N/A"}
+    - Contact: ${employee.contact_no || "N/A"}
+    - Company: ${companyName}
+    - Designation: ${designationName}
+    - Role: ${roleName}
+    - Gender: ${employee.gender || "N/A"}
+    - Civil Status: ${employee.marital_status || "N/A"}
+    - Sub-Location: ${employee.sub_location || "N/A"}
+    - Status: ${employee.is_active === 1 ? "Active" : "Inactive"}
+    - Date Joined: ${employee.date_of_joining || "N/A"}
+    ${employee.date_of_leaving ? `- Date of Leaving: ${employee.date_of_leaving}` : ""}
+    - SSS No: ${employee.sss_no || "N/A"}
+    - PhilHealth No: ${employee.philhealth_no || "N/A"}
+    - Pag-IBIG No: ${employee.pagibig_no || "N/A"}
+    - TIN: ${employee.tin_no || "N/A"}
+    - NBI Expiry: ${employee.nbi_exp || "N/A"}
+    - Healthcard Expiry: ${employee.healthcard_exp || "N/A"}
+    `.trim()
 
     const systemPrompt = `
     You are an HR support admin assistant. Your job is to write a short, professional, and friendly reply to an employee inquiry.
